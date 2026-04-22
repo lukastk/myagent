@@ -1,0 +1,5 @@
+# External Pi extensions to install globally
+# One per line. Lines starting with # are comments.
+# Formats: npm:<package>, git:<repo>, or local path
+
+npm:pi-hashline-edit

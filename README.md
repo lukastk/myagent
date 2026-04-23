@@ -1,6 +1,6 @@
 # myagent
 
-Personal [Pi coding agent](https://github.com/badlogic/pi-mono) extensions and configuration.
+Personal [Pi coding agent](https://github.com/badlogic/pi-mono) extensions, skills, and configuration.
 
 ## Setup
 
@@ -8,16 +8,25 @@ Personal [Pi coding agent](https://github.com/badlogic/pi-mono) extensions and c
 # Install Pi globally
 npm install -g @mariozechner/pi-coding-agent
 
-# Install extensions
+# Install local + external extensions and skills
 ./install.sh
 ```
 
-`install.sh` symlinks local extensions into `~/.pi/agent/extensions/` and installs external extensions listed in `external_extensions.txt`.
+`install.sh` does all of the following:
+
+- Symlinks local extensions from `extensions/` into `~/.pi/agent/extensions/`
+- Symlinks local skills from `skills/` into `~/.agents/skills/`
+- Installs external extensions listed in `external_extensions.txt` via `pi install`
+- Installs external skills listed in `external_skills.txt` via `npx skills add <source> -g -y`
 
 ## Adding extensions
 
-**Local extension:** Create a folder under `extensions/` with an `index.ts`, then run `./install.sh`.
+- **Local extension:** create `extensions/<name>/index.ts`, then run `./install.sh`.
+- **External extension:** add a line to `external_extensions.txt`, then run `./install.sh`.
 
-**External extension:** Add a line to `external_extensions.txt`, then run `./install.sh`.
+## Adding skills
 
-See [AGENTS.md](AGENTS.md) for the full extension API reference.
+- **Local skill:** create `skills/<name>/SKILL.md`, then run `./install.sh`.
+- **External skill:** add a line to `external_skills.txt`, then run `./install.sh`.
+
+For full details and examples, see [AGENTS.md](AGENTS.md).

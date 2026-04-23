@@ -1,26 +1,33 @@
 # myagent
 
-Personal Pi coding agent extensions and configuration.
+Personal Pi coding agent extensions, skills, and configuration.
 
 ## Repo structure
 
 ```
 myagent/
-├── AGENTS.md            # This file (also symlinked as CLAUDE.md)
-├── install.sh           # Installs all extensions (local + external)
-├── external_external_extensions.txt  # List of external extensions to install via `pi install`
-└── extensions/          # Local extensions (each is a folder)
+├── AGENTS.md               # This file (also symlinked as CLAUDE.md)
+├── install.sh              # Installs all extensions + skills (local + external)
+├── external_extensions.txt # External extensions to install via `pi install`
+├── external_skills.txt     # External skills to install via `npx skills add`
+├── extensions/             # Local extensions (each is a folder)
+│   └── <name>/
+│       ├── index.ts        # Extension entry point (default export)
+│       └── package.json    # Optional, only if the extension has npm dependencies
+└── skills/                 # Local skills (each is a folder with SKILL.md)
     └── <name>/
-        ├── index.ts     # Extension entry point (default export)
-        └── package.json # Optional, only if the extension has npm dependencies
+        ├── SKILL.md        # Skill frontmatter + instructions
+        └── ...             # Optional scripts/references/assets
 ```
 
 ## How install.sh works
 
 1. Symlinks each folder under `extensions/` into `~/.pi/agent/extensions/` so Pi auto-discovers them.
 2. Runs `npm install --omit=dev` for any extension that has a `package.json`.
-3. Reads `external_extensions.txt` and runs `pi install <source>` for each external extension.
-
+3. Symlinks each folder under `skills/` into `~/.agents/skills/` so Pi can discover local skills.
+4. Runs `npm install --omit=dev` for any skill that has a `package.json`.
+5. Reads `external_extensions.txt` and runs `pi install <source>` for each external extension.
+6. Reads `external_skills.txt` and runs `npx skills add <source> -g -y` for each external skill.
 After running `install.sh`, reload Pi with `/reload` if it's already running.
 
 ## How to write a new extension
@@ -170,6 +177,61 @@ Add a line to `external_extensions.txt`:
 ```
 npm:pi-hashline-edit
 git:github.com/user/repo
+```
+
+Then run `./install.sh`.
+
+## How to write a new skill
+
+### 1. Create a folder
+
+```
+skills/my-skill/SKILL.md
+```
+
+### 2. Add required frontmatter
+
+```markdown
+---
+name: my-skill
+description: What this skill does and when to use it.
+---
+```
+
+- `name` must be lowercase letters/numbers/hyphens and match the folder name.
+- `description` should be specific so the agent knows when to load the skill.
+
+### 3. Add instructions/scripts
+
+A skill can include scripts and references, e.g.:
+
+```
+skills/my-skill/
+├── SKILL.md
+├── scripts/
+│   └── run.sh
+└── references/
+    └── details.md
+```
+
+Use relative paths from `SKILL.md` when referring to local files.
+
+### 4. Install and reload
+
+Run:
+
+```bash
+./install.sh
+```
+
+Then reload Pi with `/reload` if it's running.
+
+## Adding an external skill
+
+Add a line to `external_skills.txt` (one per line):
+
+```
+vercel-labs/agent-skills@vercel-react-best-practices
 ```
 
 Then run `./install.sh`.

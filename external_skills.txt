@@ -1,0 +1,5 @@
+# External skills to install globally via the Skills CLI
+# One per line. Lines starting with # are comments.
+# Example format: <owner>/<repo>@<skill-name>
+
+# vercel-labs/agent-skills@vercel-react-best-practices

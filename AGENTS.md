@@ -28,6 +28,7 @@ myagent/
 4. Runs `npm install --omit=dev` for any skill that has a `package.json`.
 5. Reads `external_extensions.txt` and runs `pi install <source>` for each external extension.
 6. Reads `external_skills.txt` and runs `npx skills add <source> -g -y` for each external skill.
+7. If run with `--prune`, removes stale local symlinks and uninstalls previously managed external entries that are no longer listed.
 After running `install.sh`, reload Pi with `/reload` if it's already running.
 
 ## How to write a new extension

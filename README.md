@@ -10,6 +10,9 @@ npm install -g @mariozechner/pi-coding-agent
 
 # Install local + external extensions and skills
 ./install.sh
+
+# Also remove extensions/skills that are no longer declared
+./install.sh --prune
 ```
 
 `install.sh` does all of the following:
@@ -18,6 +21,7 @@ npm install -g @mariozechner/pi-coding-agent
 - Symlinks local skills from `skills/` into `~/.agents/skills/`
 - Installs external extensions listed in `external_extensions.txt` via `pi install`
 - Installs external skills listed in `external_skills.txt` via `npx skills add <source> -g -y`
+- With `--prune`, removes stale local symlinks and uninstalls previously managed external entries that are no longer listed
 
 ## Adding extensions
 

@@ -8,8 +8,9 @@ Personal Pi coding agent extensions, skills, and configuration.
 myagent/
 ├── AGENTS.md               # This file (also symlinked as CLAUDE.md)
 ├── install.sh              # Installs all extensions + skills + MCP config
-├── external_extensions.txt # External extensions to install via `pi install`
-├── external_skills.txt     # External skills to install via `npx skills add`
+├── external_extensions.txt     # External extensions to install via `pi install`
+├── external_extensions_mac.txt # macOS-only external extensions
+├── external_skills.txt         # External skills to install via `npx skills add`
 ├── mcp.json                # MCP server definitions (symlinked to ~/.config/mcp/mcp.json)
 ├── extensions/             # Local extensions (each is a folder)
 │   └── <name>/
@@ -183,6 +184,14 @@ git:github.com/user/repo
 ```
 
 Then run `./install.sh`.
+
+### Platform-specific extensions
+
+Extensions that only work on certain platforms go in platform-specific files:
+
+- `external_extensions_mac.txt` — installed only on macOS
+
+Same format as `external_extensions.txt`. Add more files for other platforms (e.g. `external_extensions_linux.txt`) by following the pattern in `install.sh`.
 
 ## How to write a new skill
 

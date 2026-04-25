@@ -369,6 +369,26 @@ else
 fi
 
 echo ""
+echo "==> Installing platform-specific extensions"
+
+EXTENSIONS_MAC_LIST="$SCRIPT_DIR/external_extensions_mac.txt"
+
+if [ "$(uname -s)" = "Darwin" ] && [ -f "$EXTENSIONS_MAC_LIST" ]; then
+    new_tmp_file tmp_mac_extensions
+    normalize_list_file "$EXTENSIONS_MAC_LIST" "$tmp_mac_extensions"
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ -z "$line" ] && continue
+        echo "    $line (macOS)"
+        pi install "$line"
+        ensure_state_line "$EXT_STATE_FILE" "$line"
+    done < "$tmp_mac_extensions"
+elif [ "$(uname -s)" != "Darwin" ]; then
+    echo "    Skipping macOS extensions (not on Darwin)"
+else
+    echo "    No external_extensions_mac.txt found, skipping."
+fi
+
+echo ""
 echo "==> Installing external skills"
 
 if [ ! -f "$SKILLS_LIST" ]; then

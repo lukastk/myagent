@@ -3,3 +3,4 @@
 # Formats: npm:<package>, git:<repo>, or local path
 
 npm:pi-hashline-edit
+npm:pi-mcp-adapter

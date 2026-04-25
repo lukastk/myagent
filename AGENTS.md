@@ -7,9 +7,10 @@ Personal Pi coding agent extensions, skills, and configuration.
 ```
 myagent/
 ├── AGENTS.md               # This file (also symlinked as CLAUDE.md)
-├── install.sh              # Installs all extensions + skills (local + external)
+├── install.sh              # Installs all extensions + skills + MCP config
 ├── external_extensions.txt # External extensions to install via `pi install`
 ├── external_skills.txt     # External skills to install via `npx skills add`
+├── mcp.json                # MCP server definitions (symlinked to ~/.config/mcp/mcp.json)
 ├── extensions/             # Local extensions (each is a folder)
 │   └── <name>/
 │       ├── index.ts        # Extension entry point (default export)
@@ -26,9 +27,10 @@ myagent/
 2. Runs `npm install --omit=dev` for any extension that has a `package.json`.
 3. Symlinks each folder under `skills/` into `~/.agents/skills/` so Pi can discover local skills.
 4. Runs `npm install --omit=dev` for any skill that has a `package.json`.
-5. Reads `external_extensions.txt` and runs `pi install <source>` for each external extension.
-6. Reads `external_skills.txt` and runs `npx skills add <source> -g -y` for each external skill.
-7. If run with `--prune`, removes stale local symlinks and uninstalls previously managed external entries that are no longer listed.
+5. Symlinks `mcp.json` to `~/.config/mcp/mcp.json` so MCP servers are globally available.
+6. Reads `external_extensions.txt` and runs `pi install <source>` for each external extension.
+7. Reads `external_skills.txt` and runs `npx skills add <source> -g -y` for each external skill.
+8. If run with `--prune`, removes stale local symlinks and uninstalls previously managed external entries that are no longer listed.
 After running `install.sh`, reload Pi with `/reload` if it's already running.
 
 ## How to write a new extension
@@ -236,3 +238,32 @@ vercel-labs/agent-skills@vercel-react-best-practices
 ```
 
 Then run `./install.sh`.
+
+## MCP servers
+
+MCP server definitions live in `mcp.json` at the repo root. This file is symlinked to `~/.config/mcp/mcp.json` by `install.sh`, making it the global MCP config.
+
+The `pi-mcp-adapter` extension (listed in `external_extensions.txt`) reads this config and bridges MCP tools into Pi. Servers are lazy — they spawn on first tool use and auto-disconnect after idle timeout.
+
+### Adding an MCP server
+
+Edit `mcp.json` and add an entry under `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "npx",
+      "args": ["-y", "some-mcp-server@latest"],
+      "env": { "API_KEY": "${MY_API_KEY}" },
+      "lifecycle": "lazy"
+    }
+  }
+}
+```
+
+Then run `./install.sh` and `/reload` in Pi.
+
+### Using MCP tools
+
+With `pi-mcp-adapter`, use `/mcp` to see server status and available tools. The adapter exposes a proxy tool that discovers MCP tools on-demand, or you can promote frequently-used tools to direct Pi tools via the `/mcp` panel.

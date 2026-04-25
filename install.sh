@@ -6,6 +6,11 @@ EXTENSIONS_DIR="$HOME/.pi/agent/extensions"
 EXTENSIONS_LIST="$SCRIPT_DIR/external_extensions.txt"
 SKILLS_DIR="$HOME/.agents/skills"
 SKILLS_LIST="$SCRIPT_DIR/external_skills.txt"
+MCP_CONFIG="$SCRIPT_DIR/mcp.json"
+MCP_DEST_DIR="$HOME/.config/mcp"
+MCP_DEST="$MCP_DEST_DIR/mcp.json"
+MCP_PI_DEST_DIR="$HOME/.pi/agent"
+MCP_PI_DEST="$MCP_PI_DEST_DIR/mcp.json"
 STATE_DIR="$SCRIPT_DIR/.install-state"
 EXT_STATE_FILE="$STATE_DIR/external_extensions.txt"
 SKILL_STATE_FILE="$STATE_DIR/external_skills.txt"
@@ -257,6 +262,44 @@ else
             (cd "$skill_dir" && npm install --omit=dev)
         fi
     done
+fi
+
+echo ""
+echo "==> Installing MCP config"
+
+if [ -f "$MCP_CONFIG" ]; then
+    mkdir -p "$MCP_DEST_DIR"
+    if [ -L "$MCP_DEST" ]; then
+        existing="$(readlink "$MCP_DEST")"
+        if [ "$existing" = "$MCP_CONFIG" ]; then
+            echo "    mcp.json (already linked)"
+        else
+            echo "    mcp.json (updating symlink)"
+            rm "$MCP_DEST"
+            ln -s "$MCP_CONFIG" "$MCP_DEST"
+        fi
+    elif [ -e "$MCP_DEST" ]; then
+        echo "    SKIPPED — $MCP_DEST already exists and is not a symlink."
+        echo "    Merge manually or remove it to allow symlinking."
+    else
+        echo "    mcp.json -> $MCP_DEST"
+        ln -s "$MCP_CONFIG" "$MCP_DEST"
+    fi
+
+    # Also symlink to Pi-specific location
+    mkdir -p "$MCP_PI_DEST_DIR"
+    if [ -L "$MCP_PI_DEST" ]; then
+        existing="$(readlink "$MCP_PI_DEST")"
+        if [ "$existing" != "$MCP_CONFIG" ]; then
+            rm "$MCP_PI_DEST"
+            ln -s "$MCP_CONFIG" "$MCP_PI_DEST"
+        fi
+    elif [ ! -e "$MCP_PI_DEST" ]; then
+        echo "    mcp.json -> $MCP_PI_DEST"
+        ln -s "$MCP_CONFIG" "$MCP_PI_DEST"
+    fi
+else
+    echo "    No mcp.json found, skipping."
 fi
 
 echo ""

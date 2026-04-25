@@ -303,6 +303,58 @@ else
 fi
 
 echo ""
+echo "==> Installing Playwright MCP (patched)"
+
+# Playwright MCP is installed persistently (not via npx) so we can patch it.
+# mcp.json references this install at ~/.local/playwright-mcp.
+#
+# PATCH: Skip Browser.setDownloadBehavior in CDP connections.
+# Brave (and some other Chromium browsers) rejects this CDP call when connected
+# via --remote-debugging-port, causing "Browser context management is not
+# supported" errors. Playwright unconditionally sends this call during context
+# initialization in crBrowser.js.
+#
+# Upstream fix: Playwright PR #40185 added a `noDefaults` option to
+# connectOverCDP() (merged 2026-04-21). Once @playwright/mcp ships a version
+# that uses noDefaults for CDP connections, this patch and the persistent
+# install can be removed — switch mcp.json back to npx.
+#
+# Track: https://github.com/nicobailon/pi-mcp-adapter/issues (or Playwright MCP)
+
+PLAYWRIGHT_MCP_DIR="$HOME/.local/playwright-mcp"
+PLAYWRIGHT_PATCH_TARGET="$PLAYWRIGHT_MCP_DIR/node_modules/playwright-core/lib/server/chromium/crBrowser.js"
+PLAYWRIGHT_PATCH_MARKER="patched for Brave CDP"
+
+mkdir -p "$PLAYWRIGHT_MCP_DIR"
+
+# Install if not present or if package.json is missing
+if [ ! -f "$PLAYWRIGHT_MCP_DIR/node_modules/@playwright/mcp/cli.js" ]; then
+    echo "    Installing @playwright/mcp..."
+    (cd "$PLAYWRIGHT_MCP_DIR" && npm init -y --silent 2>/dev/null && npm install @playwright/mcp@latest 2>&1 | tail -3)
+else
+    echo "    @playwright/mcp already installed"
+fi
+
+# Apply patch if not already applied
+if [ -f "$PLAYWRIGHT_PATCH_TARGET" ]; then
+    if grep -q "$PLAYWRIGHT_PATCH_MARKER" "$PLAYWRIGHT_PATCH_TARGET"; then
+        echo "    crBrowser.js patch (already applied)"
+    else
+        echo "    Patching crBrowser.js (skip setDownloadBehavior for Brave CDP)..."
+        cp "$PLAYWRIGHT_PATCH_TARGET" "$PLAYWRIGHT_PATCH_TARGET.bak"
+        sed -i '' "s/this._options.acceptDownloads !== \"internal-browser-default\"/false \/* $PLAYWRIGHT_PATCH_MARKER *\//" "$PLAYWRIGHT_PATCH_TARGET"
+        if grep -q "$PLAYWRIGHT_PATCH_MARKER" "$PLAYWRIGHT_PATCH_TARGET"; then
+            echo "    Patch applied successfully"
+        else
+            echo "    WARNING: Patch failed — restoring backup"
+            mv "$PLAYWRIGHT_PATCH_TARGET.bak" "$PLAYWRIGHT_PATCH_TARGET"
+        fi
+    fi
+else
+    echo "    WARNING: crBrowser.js not found at expected path"
+fi
+
+echo ""
 echo "==> Installing external extensions"
 
 if [ ! -f "$EXTENSIONS_LIST" ]; then

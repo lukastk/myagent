@@ -1,8 +1,9 @@
 {
   "mcpServers": {
     "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest", "--cdp-endpoint", "http://localhost:9222"],
+      "command": "node",
+      "args": ["node_modules/@playwright/mcp/cli.js", "--cdp-endpoint", "http://localhost:9222"],
+      "cwd": "/Users/lukas/.local/playwright-mcp",
       "lifecycle": "lazy"
     }
   }

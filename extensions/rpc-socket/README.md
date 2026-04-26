@@ -14,9 +14,20 @@ One JSON object per line (LF-delimited):
 
 | Direction | Format |
 |---|---|
-| Send | `{"message":"your prompt text"}\n` |
-| Success | `{"ok":true,"delivered":"your prompt text"}\n` |
+| Send message | `{"message":"your prompt text"}\n` |
+| Subscribe to events | `{"subscribe":true}\n` |
+| Success (send) | `{"ok":true,"delivered":"your prompt text"}\n` |
+| Success (subscribe) | `{"ok":true,"subscribed":true}\n` |
 | Error | `{"error":"reason"}\n` |
+
+Subscribed connections receive Pi events as JSONL:
+
+| Event | Format |
+|---|---|
+| Text delta | `{"event":"text_delta","delta":"Hello "}` |
+| Tool start | `{"event":"tool_execution_start","toolName":"web_search"}` |
+| Tool end | `{"event":"tool_execution_end","toolName":"web_search"}` |
+| Agent done | `{"event":"agent_end"}` |
 
 ## Usage
 

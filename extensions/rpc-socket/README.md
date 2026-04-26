@@ -1,10 +1,10 @@
 # RPC Socket Extension
 
-Opens a Unix socket server inside the interactive TUI session so external processes can inject messages into the live conversation. Each session gets its own socket, so multiple pi sessions can run simultaneously.
+Opens a Unix socket server inside the interactive TUI session so external processes can inject messages, receive streaming responses, abort operations, and inject system prompts into the live conversation. Each session gets its own socket, so multiple pi sessions can run simultaneously.
 
 ## How it works
 
-On `session_start`, the extension creates a Unix socket at `/tmp/pi-rpc-sockets/<sessionId>.sock`. External processes connect, send a JSON message, and it appears in the TUI as a user turn via `sendUserMessage` with `deliverAs: "steer"`.
+On `session_start`, the extension creates a Unix socket at `/tmp/pi-rpc-sockets/<sessionId>.sock`. External processes connect, send JSON commands, and interact with the live Pi session.
 
 On `session_shutdown`, the socket is cleaned up.
 
@@ -12,15 +12,32 @@ On `session_shutdown`, the socket is cleaned up.
 
 One JSON object per line (LF-delimited):
 
-| Direction | Format |
-|---|---|
-| Send message | `{"message":"your prompt text"}\n` |
-| Subscribe to events | `{"subscribe":true}\n` |
-| Success (send) | `{"ok":true,"delivered":"your prompt text"}\n` |
-| Success (subscribe) | `{"ok":true,"subscribed":true}\n` |
-| Error | `{"error":"reason"}\n` |
+### Commands
 
-Subscribed connections receive Pi events as JSONL:
+| Command | Format |
+|---|---|
+| Send message | `{"message":"prompt text"}` |
+| Subscribe to events | `{"subscribe":true}` |
+| Abort current operation | `{"abort":true}` |
+| Compact context | `{"compact":true}` |
+| Query state | `{"getState":true}` |
+| Append to system prompt | `{"appendSystemPrompt":"voice mode instructions..."}` |
+| Clear appended system prompt | `{"clearSystemPrompt":true}` |
+
+### Responses
+
+| Response | Format |
+|---|---|
+| Success (send) | `{"ok":true,"delivered":"prompt text"}` |
+| Success (subscribe) | `{"ok":true,"subscribed":true}` |
+| Success (abort) | `{"ok":true,"aborted":true}` |
+| Success (compact) | `{"ok":true,"compacted":true}` |
+| State | `{"ok":true,"state":{"idle":true,"contextUsage":...,"hasAppendedSystemPrompt":false}}` |
+| Error | `{"error":"reason"}` |
+
+### Streamed events
+
+Subscribed connections receive Pi events as JSONL. Events are only broadcast for turns initiated via the socket (not for messages typed in the TUI):
 
 | Event | Format |
 |---|---|
@@ -63,17 +80,45 @@ Keep a connection open to stream Pi's output:
 echo '{"subscribe":true}' | nc -U /tmp/pi-rpc-sockets/<sessionId>.sock -k
 ```
 
+### Abort current operation
+
+```bash
+echo '{"abort":true}' | nc -U /tmp/pi-rpc-sockets/<sessionId>.sock
+```
+
+### Inject system prompt (persistent)
+
+Appended text is injected via `before_agent_start` on every turn:
+
+```bash
+echo '{"appendSystemPrompt":"Always respond in haiku"}' | nc -U /tmp/pi-rpc-sockets/<sessionId>.sock
+```
+
+Clear with:
+
+```bash
+echo '{"clearSystemPrompt":true}' | nc -U /tmp/pi-rpc-sockets/<sessionId>.sock
+```
+
 ### From Node.js
 
 ```typescript
 import * as net from "node:net";
 
 const conn = net.createConnection("/tmp/pi-rpc-sockets/<sessionId>.sock", () => {
+  // Subscribe to events
+  conn.write(JSON.stringify({ subscribe: true }) + "\n");
+  // Inject system prompt
+  conn.write(JSON.stringify({ appendSystemPrompt: "Use <spoken> tags for voice output." }) + "\n");
+  // Send a message
   conn.write(JSON.stringify({ message: "What files changed today?" }) + "\n");
 });
 conn.on("data", (data) => {
-  console.log(data.toString());
-  conn.end();
+  for (const line of data.toString().split("\n").filter(Boolean)) {
+    const event = JSON.parse(line);
+    if (event.event === "text_delta") process.stdout.write(event.delta);
+    if (event.event === "agent_end") conn.end();
+  }
 });
 ```
 
@@ -89,13 +134,15 @@ print(sock.recv(4096).decode())
 sock.close()
 ```
 
+## Event attribution
+
+Events are only broadcast to subscribers for agent turns that were initiated via the socket. If the user types a command in the TUI, the response is NOT sent to subscribers. This prevents a voice agent from trying to speak responses to typed commands.
+
 ## Delivery semantics
 
 Messages are delivered with `deliverAs: "steer"`:
 - If the agent is idle, the message triggers an LLM turn immediately.
 - If the agent is mid-stream, the message queues until the current tool calls finish, then gets delivered before the next LLM call.
-
-Messages appear with `source: "extension"` so downstream code can distinguish them from typed input.
 
 ## Install
 

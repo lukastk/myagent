@@ -37,6 +37,12 @@ Subscribed connections receive Pi events as JSONL:
 ls /tmp/pi-rpc-sockets/
 ```
 
+Sockets are cleaned up on normal exit. After a crash or SIGKILL, stale socket files may linger. To check if a socket is still alive:
+
+```bash
+echo '' | nc -U /tmp/pi-rpc-sockets/<sessionId>.sock -w 1 2>/dev/null && echo "alive" || echo "stale"
+```
+
 ### Send a message
 
 ```bash
@@ -47,6 +53,14 @@ Or target the first available session:
 
 ```bash
 echo '{"message":"Run the tests"}' | nc -U $(ls /tmp/pi-rpc-sockets/*.sock | head -1)
+```
+
+### Subscribe to events
+
+Keep a connection open to stream Pi's output:
+
+```bash
+echo '{"subscribe":true}' | nc -U /tmp/pi-rpc-sockets/<sessionId>.sock -k
 ```
 
 ### From Node.js

@@ -48,7 +48,7 @@ Headless browser automation via Puppeteer with 14 anti-detection stealth scripts
 
 | Command | Description |
 |---|---|
-| `/search-provider [name\|auto]` | Set preferred search provider |
+| `/search-provider [name\|auto]` | Open provider picker when run without args; set provider directly when name/auto is passed |
 | `/browser [visible\|headless]` | Toggle browser headed/headless mode |
 
 ## Search Providers

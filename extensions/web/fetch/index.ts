@@ -433,7 +433,7 @@ export function createFetchTool(_pi: ExtensionAPI) {
 			timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (default 20)" })),
 			raw: Type.Optional(Type.Boolean({ description: "Return raw content without special handling" })),
 		}),
-		async execute(_toolCallId, params, { signal }) {
+		async execute(_toolCallId, params, signal) {
 			const { url, timeout = 20, raw = false } = params;
 			const effectiveTimeout = Math.max(5, Math.min(timeout, 120));
 

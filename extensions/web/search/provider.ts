@@ -61,6 +61,11 @@ export function setPreferredSearchProvider(provider: SearchProviderId | "auto"):
 	preferredProvId = provider;
 }
 
+/** Read the current preferred web search provider. */
+export function getPreferredSearchProvider(): SearchProviderId | "auto" {
+	return preferredProvId;
+}
+
 /** Determine which providers are configured  */
 export async function resolveProviderChain(
 	preferredProvider: SearchProviderId | "auto" = preferredProvId,

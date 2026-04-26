@@ -23,6 +23,7 @@ import type {
 	Page,
 	default as PuppeteerType,
 	SerializedAXNode,
+	PuppeteerLifeCycleEvent,
 } from "puppeteer";
 
 import { ToolError, ToolAbortError, throwIfAborted } from "../lib/errors.js";
@@ -392,6 +393,8 @@ function resolvePageClient(page: Page): PuppeteerCdpClient | null {
 // ---------------------------------------------------------------------------
 
 type ReadableFormat = "text" | "markdown";
+const NAVIGATION_WAIT_UNTIL_VALUES: PuppeteerLifeCycleEvent[] = ["load", "domcontentloaded", "networkidle0", "networkidle2"];
+const READABLE_FORMAT_VALUES: ReadableFormat[] = ["text", "markdown"];
 
 interface ReadableResult {
 	url: string;
@@ -619,13 +622,13 @@ const browserSchema = Type.Object({
 	key: Type.Optional(Type.String({ description: "Keyboard key to press (press)" })),
 	timeout: Type.Optional(Type.Number({ description: "Timeout in seconds", default: 30 })),
 	wait_until: Type.Optional(
-		StringEnum(["load", "domcontentloaded", "networkidle0", "networkidle2"], {
+		StringEnum(NAVIGATION_WAIT_UNTIL_VALUES, {
 			description: "Navigation wait condition (goto)",
 		}),
 	),
 	full_page: Type.Optional(Type.Boolean({ description: "Capture full page screenshot (screenshot)" })),
 	format: Type.Optional(
-		StringEnum(["text", "markdown"], {
+		StringEnum(READABLE_FORMAT_VALUES, {
 			description: "Output format for extract_readable (text/markdown)",
 		}),
 	),
@@ -1180,7 +1183,7 @@ export function createBrowserTool(_pi: ExtensionAPI) {
 					case "goto": {
 						const url = ensureParam(params.url, "url", params.action);
 						const pg = await ensurePage(params);
-						const waitUntil = params.wait_until ?? "networkidle2";
+						const waitUntil = (params.wait_until ?? "networkidle2") as PuppeteerLifeCycleEvent;
 						await clearElementCache();
 						await untilAborted(signal, () => pg.goto(url, { waitUntil, timeout: timeoutMs }));
 						const finalUrl = pg.url();
@@ -1562,7 +1565,7 @@ export function createBrowserTool(_pi: ExtensionAPI) {
 					// ===== extract_readable =====
 					case "extract_readable": {
 						const pg = await ensurePage(params);
-						const format = params.format ?? "markdown";
+						const format = (params.format ?? "markdown") as ReadableFormat;
 						const html = (await untilAborted(signal, () => pg.content())) as string;
 						const url = pg.url();
 						const readable = extractReadableFromHtml(html, url, format);

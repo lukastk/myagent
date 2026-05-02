@@ -21,6 +21,7 @@ One JSON object per line (LF-delimited):
 | Abort current operation | `{"abort":true}` |
 | Compact context | `{"compact":true}` |
 | Query state | `{"getState":true}` |
+| Query tmux info | `{"getTmuxInfo":true}` |
 | Append to system prompt | `{"appendSystemPrompt":"voice mode instructions..."}` |
 | Clear appended system prompt | `{"clearSystemPrompt":true}` |
 
@@ -32,7 +33,8 @@ One JSON object per line (LF-delimited):
 | Success (subscribe) | `{"ok":true,"subscribed":true}` |
 | Success (abort) | `{"ok":true,"aborted":true}` |
 | Success (compact) | `{"ok":true,"compacted":true}` |
-| State | `{"ok":true,"state":{"idle":true,"contextUsage":...,"hasAppendedSystemPrompt":false}}` |
+| State | `{"ok":true,"state":{"idle":true,"contextUsage":...,"hasAppendedSystemPrompt":false,"tmux":...}}` |
+| Tmux info | `{"ok":true,"tmux":{"inTmux":true,"session":"main","window":"pi","paneId":"%5"}}` |
 | Error | `{"error":"reason"}` |
 
 ### Streamed events

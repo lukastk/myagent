@@ -15,6 +15,7 @@
  *     {"abort":true}                      Cancel current agent operation
  *     {"compact":true}                    Trigger context compaction
  *     {"getState":true}                   Query agent state
+ *     {"getTmuxInfo":true}                Query tmux session/pane info
  *     {"appendSystemPrompt":"..."}        Append to system prompt (persistent)
  *     {"clearSystemPrompt":true}          Remove appended system prompt
  *
@@ -31,9 +32,46 @@
 import * as net from "node:net";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execFileSync } from "node:child_process";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 const SOCKETS_DIR = "/tmp/pi-rpc-sockets";
+
+/**
+ * Detect tmux session/pane info from the Pi process's environment.
+ * Returns null if Pi was launched outside tmux.
+ */
+function getTmuxInfo(): Record<string, unknown> | null {
+	const tmuxEnv = process.env.TMUX;
+	const paneId = process.env.TMUX_PANE;
+	if (!tmuxEnv || !paneId) return null;
+
+	// Static info from env
+	const info: Record<string, unknown> = {
+		inTmux: true,
+		paneId,
+		socketPath: tmuxEnv.split(",")[0],
+	};
+
+	// Query tmux for human-readable session/window/pane names.
+	// These can change as the user renames things, so query fresh each time.
+	try {
+		const output = execFileSync(
+			"tmux",
+			["display-message", "-p", "-t", paneId, "#S\t#W\t#I\t#P"],
+			{ encoding: "utf8", timeout: 1000 },
+		).trim();
+		const [session, window, windowIndex, paneIndex] = output.split("\t");
+		info.session = session;
+		info.window = window;
+		info.windowIndex = parseInt(windowIndex, 10);
+		info.paneIndex = parseInt(paneIndex, 10);
+	} catch {
+		// tmux not available or query failed — return basic info only
+	}
+
+	return info;
+}
 
 export default function (pi: ExtensionAPI) {
 	let server: net.Server | null = null;
@@ -226,7 +264,17 @@ export default function (pi: ExtensionAPI) {
 					idle,
 					contextUsage: usage,
 					hasAppendedSystemPrompt: appendedSystemPrompt !== null,
+					tmux: getTmuxInfo() ?? { inTmux: false },
 				},
+			});
+			return;
+		}
+
+		// Query tmux info specifically
+		if (parsed.getTmuxInfo === true) {
+			reply({
+				ok: true,
+				tmux: getTmuxInfo() ?? { inTmux: false },
 			});
 			return;
 		}

@@ -14,7 +14,7 @@
  *     {"subscribe":true}                  Start receiving Pi events
  *     {"abort":true}                      Cancel current agent operation
  *     {"compact":true}                    Trigger context compaction
- *     {"getState":true}                   Query agent state
+ *     {"getState":true}                   Query agent state (idle, context, cwd, tmux)
  *     {"getTmuxInfo":true}                Query tmux session/pane info
  *     {"appendSystemPrompt":"..."}        Append to system prompt (persistent)
  *     {"clearSystemPrompt":true}          Remove appended system prompt
@@ -264,6 +264,7 @@ export default function (pi: ExtensionAPI) {
 					idle,
 					contextUsage: usage,
 					hasAppendedSystemPrompt: appendedSystemPrompt !== null,
+					cwd: process.cwd(),
 					tmux: getTmuxInfo() ?? { inTmux: false },
 				},
 			});

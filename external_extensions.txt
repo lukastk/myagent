@@ -2,5 +2,5 @@
 # One per line. Lines starting with # are comments.
 # Formats: npm:<package>, git:<repo>, or local path
 
-npm:pi-hashline-edit
+# Local clone in extensions/pi-hashline-edit replaces npm:pi-hashline-edit
 npm:pi-mcp-adapter

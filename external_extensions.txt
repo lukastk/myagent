@@ -4,3 +4,5 @@
 
 # Local clone in extensions/pi-hashline-edit replaces npm:pi-hashline-edit
 npm:pi-mcp-adapter
+npm:pi-slopchop
+

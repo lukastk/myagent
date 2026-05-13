@@ -9,6 +9,7 @@ import { access as fsAccess } from "fs/promises";
 import {
   detectLineEnding,
   generateDiffString,
+  buildCompactHashlineDiffPreview,
   normalizeToLF,
   restoreLineEndings,
   stripBom,
@@ -509,9 +510,24 @@ function formatPreviewDiff(
 
 function formatResultDiff(
   diff: string,
+  expanded: boolean,
   theme: { fg: (token: string, text: string) => string },
 ): string {
-  return colorDiffLines(diff.split("\n"), theme).join("\n");
+  if (expanded) {
+    return colorDiffLines(diff.split("\n"), theme).join("\n");
+  }
+
+  const compact = buildCompactHashlineDiffPreview(diff, {
+    maxUnchangedRun: 2,
+    maxAdditionRun: 4,
+    maxDeletionRun: 4,
+    maxOutputLines: 16,
+  });
+  if (!compact.preview) {
+    return "";
+  }
+
+  return colorDiffLines(compact.preview.split("\n"), theme).join("\n");
 }
 
 function getRenderedEditTextContent(
@@ -544,13 +560,15 @@ function buildAppliedChangedResultText(
   text: string | undefined,
   details: HashlineEditToolDetails | undefined,
   preview: EditPreview | undefined,
+  expanded: boolean,
   theme: { fg: (token: string, text: string) => string },
 ): string | undefined {
   const previewDiff = preview && !("error" in preview) ? preview.diff : undefined;
   const sections: string[] = [];
 
   if (details?.diff && details.diff !== previewDiff) {
-    sections.push(formatResultDiff(details.diff, theme));
+    const diffText = formatResultDiff(details.diff, expanded, theme);
+    if (diffText) sections.push(diffText);
   }
 
   const warnings = extractRenderedWarnings(text);
@@ -958,6 +976,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
           renderedText,
           typedResult.details,
           previewBeforeResult,
+          context.expanded,
           theme,
         );
         if (!appliedChangedText) {

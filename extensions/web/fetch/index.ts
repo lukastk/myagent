@@ -4,6 +4,7 @@
  */
 import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
+import { Text } from "@mariozechner/pi-tui";
 import { ToolAbortError } from "../lib/errors.js";
 import { formatDimensionNote, resizeImage } from "../lib/image-resize.js";
 import { specialHandlers } from "../scrapers/index.js";
@@ -415,6 +416,80 @@ function buildUrlReadOutput(result: FetchRenderResult, content: string): string 
 	return output;
 }
 
+function getTextContent(result: { content: Array<{ type: string; text?: string }> }): string | undefined {
+	const textBlock = result.content.find((block) => block.type === "text");
+	if (!textBlock || textBlock.type !== "text") return undefined;
+	return textBlock.text;
+}
+
+function countNonEmptyLines(text: string): number {
+	if (!text.trim()) return 0;
+	return text
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean).length;
+}
+
+function summarizeFetchResult(result: { content: Array<{ type: string; text?: string }> }): string {
+	const text = getTextContent(result);
+	if (!text) return "";
+
+	const lines = text.split("\n");
+	let method = "";
+	let contentType = "";
+	let bodyStart = 0;
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		if (line.startsWith("Method: ")) method = line.slice("Method: ".length).trim();
+		if (line.startsWith("Content-Type: ")) contentType = line.slice("Content-Type: ".length).trim();
+		if (line.trim() === "---") {
+			bodyStart = i + 1;
+			break;
+		}
+	}
+
+	const body = lines.slice(bodyStart).join("\n");
+	const bodyLineCount = countNonEmptyLines(body);
+	const details: string[] = [];
+	if (method) details.push(method);
+	if (contentType) details.push(contentType);
+	if (bodyLineCount > 0) details.push(`${bodyLineCount} lines`);
+	if (details.length === 0) return "";
+	return ` → ${details.join(" • ")}`;
+}
+
+function renderExpandedText(
+	result: { content: Array<{ type: string; text?: string }> },
+	theme: { fg: (key: string, text: string) => string },
+): Text {
+	const text = getTextContent(result);
+	if (!text) return new Text("", 0, 0);
+
+	const output = text
+		.split("\n")
+		.map((line) => theme.fg("toolOutput", line))
+		.join("\n");
+
+	if (!output.trim()) return new Text("", 0, 0);
+	return new Text(`\n${output}`, 0, 0);
+}
+
+function renderCollapsedErrorOrSummary(
+	result: { content: Array<{ type: string; text?: string }> },
+	isError: boolean,
+	theme: { fg: (key: string, text: string) => string },
+	summaryText: string,
+): Text {
+	if (!isError) return new Text(theme.fg("muted", summaryText), 0, 0);
+
+	const text = getTextContent(result);
+	const firstLine = text?.split("\n").find((line) => line.trim().length > 0);
+	if (!firstLine) return new Text(theme.fg("error", " → failed"), 0, 0);
+
+	return new Text(theme.fg("error", ` → ${firstLine}`), 0, 0);
+}
+
 // =============================================================================
 // Tool Definition
 // =============================================================================
@@ -469,6 +544,18 @@ export function createFetchTool(_pi: ExtensionAPI) {
 				content: contentBlocks,
 				details: {},
 			};
+		},
+		renderCall(args, theme) {
+			const url = String(args.url || "...");
+			const compactUrl = url.length > 90 ? `${url.slice(0, 89)}…` : url;
+			let text = `${theme.fg("toolTitle", theme.bold("fetch"))} ${theme.fg("accent", compactUrl)}`;
+			if (args.raw) text += theme.fg("warning", " [raw]");
+			if (args.timeout !== undefined) text += theme.fg("muted", ` (timeout ${args.timeout}s)`);
+			return new Text(text, 0, 0);
+		},
+		renderResult(result, { expanded }, theme, context) {
+			if (expanded) return renderExpandedText(result, theme);
+			return renderCollapsedErrorOrSummary(result, context.isError, theme, summarizeFetchResult(result));
 		},
 	});
 }

@@ -4,3 +4,4 @@
 
 # vercel-labs/agent-skills@vercel-react-best-practices
 lukastk/boxyard@boxyard-cli
+lukastk/myrig@mysetup-navigator

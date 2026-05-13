@@ -202,7 +202,7 @@ class ToolOutputSplitPane implements Component {
 	) {}
 
 	handleInput(data: string): void {
-		if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
+		if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c")) || matchesKey(data, "ctrl+alt+o")) {
 			this.onClose();
 			return;
 		}
@@ -378,6 +378,7 @@ export default function (pi: ExtensionAPI) {
 	const rowInvalidators = new Map<string, () => void>();
 	let selectedToolCallId: string | undefined;
 	let paneOpen = false;
+	let closePane: (() => void) | undefined;
 
 	function isToolSelected(toolCallId: string): boolean {
 		return paneOpen && selectedToolCallId === toolCallId;
@@ -520,10 +521,7 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify("No compact tool outputs available yet.", "info");
 			return;
 		}
-		if (paneOpen) {
-			ctx.ui.notify("Tool output pane is already open.", "info");
-			return;
-		}
+		if (paneOpen) return;
 
 		paneOpen = true;
 		if (!selectedToolCallId || !records.some((record) => record.toolCallId === selectedToolCallId)) {
@@ -532,36 +530,60 @@ export default function (pi: ExtensionAPI) {
 		invalidateAllRows();
 
 		let closed = false;
-		await ctx.ui.custom<void>(
-			(tui, theme, _keybindings, done) =>
-				new ToolOutputSplitPane(
-					tui,
-					theme,
-					() => getCompletedToolOutputs(),
-					() => selectedToolCallId,
-					(toolCallId) => setSelectedToolCallId(toolCallId),
-					() => {
-						if (closed) return;
-						closed = true;
-						done();
-					},
-					() => invalidateAllRows(),
-				),
-			{
-				overlay: true,
-				overlayOptions: {
-					anchor: "right-center",
-					width: "45%",
-					minWidth: 52,
-					maxHeight: "100%",
-					margin: { top: 1, right: 1, bottom: 1, left: 0 },
-				},
-			},
-		);
+		const finalizeClosedState = (): boolean => {
+			if (closed) return false;
+			closed = true;
+			paneOpen = false;
+			closePane = undefined;
+			return true;
+		};
 
-		paneOpen = false;
-		setSelectedToolCallId(undefined);
-		invalidateAllRows();
+		try {
+			await ctx.ui.custom<void>(
+				(tui, theme, _keybindings, done) => {
+					const requestClose = () => {
+						if (!finalizeClosedState()) return;
+						done();
+					};
+					closePane = requestClose;
+					return new ToolOutputSplitPane(
+						tui,
+						theme,
+						() => getCompletedToolOutputs(),
+						() => selectedToolCallId,
+						(toolCallId) => setSelectedToolCallId(toolCallId),
+						requestClose,
+						() => invalidateAllRows(),
+					);
+				},
+				{
+					overlay: true,
+					overlayOptions: {
+						anchor: "right-center",
+						width: "45%",
+						minWidth: 52,
+						maxHeight: "100%",
+						margin: { top: 1, right: 1, bottom: 1, left: 0 },
+					},
+				},
+			);
+		} finally {
+			finalizeClosedState();
+			setSelectedToolCallId(undefined);
+			invalidateAllRows();
+		}
+	}
+
+	async function toggleSplitPane(ctx: ExtensionContext): Promise<void> {
+		if (paneOpen) {
+			if (closePane) {
+				closePane();
+			} else {
+				ctx.ui.notify("Tool output pane is opening…", "info");
+			}
+			return;
+		}
+		await openSplitPane(ctx);
 	}
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -570,6 +592,7 @@ export default function (pi: ExtensionAPI) {
 		rowInvalidators.clear();
 		selectedToolCallId = undefined;
 		paneOpen = false;
+		closePane = undefined;
 		rebuildToolOutputsFromSession(ctx);
 	});
 
@@ -590,16 +613,16 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerShortcut("ctrl+alt+o", {
-		description: "Open compact tool split pane",
+		description: "Toggle compact tool split pane",
 		handler: async (ctx) => {
-			await openSplitPane(ctx);
+			await toggleSplitPane(ctx);
 		},
 	});
 
 	pi.registerCommand("tool-pane", {
-		description: "Open compact tool split pane",
+		description: "Toggle compact tool split pane",
 		handler: async (_args, ctx) => {
-			await openSplitPane(ctx);
+			await toggleSplitPane(ctx);
 		},
 	});
 

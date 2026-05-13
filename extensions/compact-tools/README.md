@@ -25,15 +25,15 @@ Plus:
 ## Keybindings / commands
 
 - `Ctrl+O` — global expand/collapse tool output
-- `Ctrl+Alt+O` — open split pane
-- `/tool-pane` — open split pane
+- `Ctrl+Alt+O` — toggle split pane (open/close)
+- `/tool-pane` — toggle split pane (open/close)
 - if terminal shortcut handling differs, run `/tool-pane`
 
 Inside split pane:
 
 - `←` / `→`: previous / next tool call
 - `↑` / `↓`, `PageUp` / `PageDown`, `Home` / `End`: scroll output
-- `Esc`: close pane
+- `Esc` or `Ctrl+Alt+O`: close pane
 
 ## Run directly
 

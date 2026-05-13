@@ -298,16 +298,20 @@ class ToolOutputSplitPane implements Component {
 		const bodySlice = bodyLines.slice(this.scrollOffset, this.scrollOffset + visibleRows);
 		while (bodySlice.length < visibleRows) bodySlice.push("");
 
-		const divider = "─".repeat(safeWidth);
-		const title = `Tool output ${selectedIndex + 1}/${records.length}`;
-		const subtitle = toToolExecutionLabel(selected);
-		const help = "←/→ switch  ↑/↓/PgUp/PgDn scroll  Home/End  Esc close";
+		const divider = this.theme.fg("border", "─".repeat(safeWidth));
+		const title = this.theme.fg("accent", this.theme.bold(`Tool output ${selectedIndex + 1}/${records.length}`));
+		const subtitleColor = selected.isError ? "error" : "muted";
+		const subtitle = this.theme.fg(subtitleColor, toToolExecutionLabel(selected));
+		const help = this.theme.fg("dim", "←/→ switch  ↑/↓/PgUp/PgDn scroll  Home/End  Esc close");
 
 		const top = [title, subtitle, help, divider].map((line) => truncateToWidth(line, safeWidth, ""));
-		const bottomInfo = `lines ${Math.min(bodyLines.length, this.scrollOffset + 1)}-${Math.min(
-			bodyLines.length,
-			this.scrollOffset + bodySlice.length,
-		)} / ${bodyLines.length}`;
+		const bottomInfo = this.theme.fg(
+			"dim",
+			`lines ${Math.min(bodyLines.length, this.scrollOffset + 1)}-${Math.min(
+				bodyLines.length,
+				this.scrollOffset + bodySlice.length,
+			)} / ${bodyLines.length}`,
+		);
 		const bottom = [divider, truncateToWidth(bottomInfo, safeWidth, "")];
 
 		return [...top, ...bodySlice.map((line) => truncateToWidth(line, safeWidth, "")), ...bottom];
@@ -340,20 +344,27 @@ class ToolOutputSplitPane implements Component {
 
 		const outputLines = record.output.length > 0 ? record.output.split("\n") : ["(no text output)"];
 		const invocationLines = formatArgsForDisplay(record.args);
-		const sourceLines: string[] = [
-			"Invocation",
-			`tool: ${record.toolName}`,
-			"arguments:",
-			...invocationLines,
-			"",
-			"Output",
-			...outputLines,
+		type PaneLine = { text: string; style: "heading" | "label" | "content" | "spacer" };
+		const sourceLines: PaneLine[] = [
+			{ text: "Invocation", style: "heading" },
+			{ text: `tool: ${record.toolName}`, style: "label" },
+			{ text: "arguments:", style: "label" },
+			...invocationLines.map((line) => ({ text: line, style: "content" as const })),
+			{ text: "", style: "spacer" },
+			{ text: "Output", style: "heading" },
+			...outputLines.map((line) => ({ text: line, style: "content" as const })),
 		];
 
 		const wrapped: string[] = [];
 		for (const line of sourceLines) {
-			const source = sanitizePaneLine(line.length === 0 ? " " : line);
-			const chunks = wrapTextWithAnsi(source, width);
+			const source = sanitizePaneLine(line.text.length === 0 ? " " : line.text);
+			const styled =
+				line.style === "heading"
+					? this.theme.fg("accent", this.theme.bold(source))
+					: line.style === "label"
+						? this.theme.fg("muted", source)
+						: source;
+			const chunks = wrapTextWithAnsi(styled, width);
 			if (chunks.length === 0) {
 				wrapped.push("");
 				continue;

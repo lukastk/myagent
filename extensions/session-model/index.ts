@@ -108,7 +108,7 @@ async function showSelector(
   pi: ExtensionAPI,
   models: ModelChoice[]
 ): Promise<void> {
-  const items: SelectItem[] = models.map((m) => ({
+  const allItems: SelectItem[] = models.map((m) => ({
     value: `${m.provider}/${m.id}`,
     label: m.name,
     description: `${m.provider}/${m.id}`,
@@ -116,9 +116,21 @@ async function showSelector(
 
   const result = await ctx.ui.custom<string | null>(
     (tui, theme, _kb, done) => {
+      let searchQuery = "";
+
+      function filteredItems(): SelectItem[] {
+        if (!searchQuery) return allItems;
+        const q = searchQuery.toLowerCase();
+        return allItems.filter(
+          (item) =>
+            item.label.toLowerCase().includes(q) ||
+            item.description?.toLowerCase().includes(q)
+        );
+      }
+
       const container = new Container();
 
-      // Border
+      // Top border
       container.addChild(
         new DynamicBorder((str) => theme.fg("accent", str))
       );
@@ -130,28 +142,52 @@ async function showSelector(
         )
       );
 
-      // SelectList
-      const selectList = new SelectList(
-        items,
-        Math.min(items.length, 15),
-        {
-          selectedPrefix: (text) => theme.fg("accent", text),
-          selectedText: (text) => theme.fg("accent", text),
-          description: (text) => theme.fg("muted", text),
-          scrollInfo: (text) => theme.fg("dim", text),
-          noMatch: (text) => theme.fg("warning", text),
-        }
+      // Search display (Text that updates as user types)
+      const searchText = new Text(
+        theme.fg("muted", "Type to search..."),
+        0,
+        0
       );
+      container.addChild(searchText);
 
-      selectList.onSelect = (item) => done(item.value);
-      selectList.onCancel = () => done(null);
-
+      // Build initial SelectList
+      let selectList = buildSelectList(filteredItems(), theme, done);
       container.addChild(selectList);
+
+      function buildSelectList(
+        items: SelectItem[],
+        theme: any,
+        done: (value: string | null) => void
+      ): SelectList {
+        const sl = new SelectList(items, Math.min(items.length, 15), {
+          selectedPrefix: (text: string) => theme.fg("accent", text),
+          selectedText: (text: string) => theme.fg("accent", text),
+          description: (text: string) => theme.fg("muted", text),
+          scrollInfo: (text: string) => theme.fg("dim", text),
+          noMatch: (text: string) => theme.fg("warning", text),
+        });
+        sl.onSelect = (item) => done(item.value);
+        sl.onCancel = () => done(null);
+        return sl;
+      }
+
+      function rebuildSelectList() {
+        const idx = container.children.indexOf(selectList);
+        if (idx !== -1) {
+          container.children[idx] = buildSelectList(
+            filteredItems(),
+            theme,
+            done
+          );
+          selectList = container.children[idx] as SelectList;
+        }
+        container.invalidate();
+      }
 
       // Footer
       container.addChild(
         new Text(
-          theme.fg("dim", "↑↓ navigate · enter select · esc cancel")
+          theme.fg("dim", "↑↓ navigate · enter select · esc cancel · type to search")
         )
       );
 
@@ -159,6 +195,17 @@ async function showSelector(
       container.addChild(
         new DynamicBorder((str) => theme.fg("accent", str))
       );
+
+      function updateSearchDisplay() {
+        if (searchQuery) {
+          searchText.setText(
+            theme.fg("accent", `Search: ${searchQuery}`)
+          );
+        } else {
+          searchText.setText(theme.fg("muted", "Type to search..."));
+        }
+        searchText.invalidate();
+      }
 
       return {
         render(width: number) {
@@ -168,6 +215,36 @@ async function showSelector(
           container.invalidate();
         },
         handleInput(data: string) {
+          // Escape with active search: clear search first, second esc cancels
+          if (data === "\x1b" && searchQuery) {
+            searchQuery = "";
+            updateSearchDisplay();
+            rebuildSelectList();
+            tui.requestRender();
+            return;
+          }
+
+          // Backspace
+          if (data === "\x7f" || data === "\b") {
+            if (searchQuery.length > 0) {
+              searchQuery = searchQuery.slice(0, -1);
+              updateSearchDisplay();
+              rebuildSelectList();
+              tui.requestRender();
+            }
+            return;
+          }
+
+          // Printable character - add to search
+          if (data.length === 1 && data.charCodeAt(0) >= 32) {
+            searchQuery += data;
+            updateSearchDisplay();
+            rebuildSelectList();
+            tui.requestRender();
+            return;
+          }
+
+          // Pass everything else (arrows, enter, etc.) to SelectList
           selectList.handleInput(data);
           tui.requestRender();
         },

@@ -51,6 +51,21 @@ gog --account lukas.kikuchi@gmail.com sheets get <spreadsheetId> '<range>'
 
 `GOG_KEYRING_PASSWORD` is set via shell init on all machines — no manual auth or password prompts needed. The CLI works in both interactive and non-interactive (SSH/script) contexts.
 
+## Re-authenticating
+
+If a `gog` command fails with an authentication error (token expired, missing scopes, etc.), tell the user to re-authorize with:
+
+```bash
+gog auth add <email> --services gmail,calendar,drive,docs,sheets --force-consent
+```
+
+| Account | Command |
+|---|---|
+| Personal | `gog auth add lukas.kikuchi@gmail.com --services gmail,calendar,drive,docs,sheets --force-consent` |
+| Work | `gog auth add kikuchi.lukas@gmail.com --services gmail,calendar,drive,docs,sheets --force-consent` |
+
+This opens a browser for interactive OAuth consent. After re-authorizing, run `gog-auth-bootstrap-all` to distribute the new tokens to all machines.
+
 ## Machine targets
 
 Gog is available on all three machines:

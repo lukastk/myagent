@@ -17,6 +17,7 @@ import {
   type SelectItem,
   SelectList,
   Text,
+  fuzzyFilter,
 } from "@mariozechner/pi-tui";
 
 interface ModelChoice {
@@ -38,19 +39,6 @@ async function getAvailableModels(ctx: ExtensionCommandContext): Promise<ModelCh
   }));
 }
 
-/**
- * Fuzzy filter models by a query string.
- */
-function fuzzyFilter(query: string, models: ModelChoice[]): ModelChoice[] {
-  const q = query.toLowerCase();
-  return models.filter(
-    (m) =>
-      m.name.toLowerCase().includes(q) ||
-      m.id.toLowerCase().includes(q) ||
-      m.provider.toLowerCase().includes(q)
-  );
-}
-
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("smodel", {
     description:
@@ -65,7 +53,7 @@ export default function (pi: ExtensionAPI) {
       // Direct switch: /smodel <query>
       if (args?.trim()) {
         const query = args.trim();
-        const matches = fuzzyFilter(query, models);
+        const matches = fuzzyFilter(models, query, (m) => `${m.provider} ${m.name} ${m.id}`);
 
         if (matches.length === 0) {
           ctx.ui.notify(`No model matching "${query}"`, "error");
@@ -120,12 +108,7 @@ async function showSelector(
 
       function filteredItems(): SelectItem[] {
         if (!searchQuery) return allItems;
-        const q = searchQuery.toLowerCase();
-        return allItems.filter(
-          (item) =>
-            item.label.toLowerCase().includes(q) ||
-            item.description?.toLowerCase().includes(q)
-        );
+        return fuzzyFilter(allItems, searchQuery, (item) => `${item.label} ${item.description ?? ""}`);
       }
 
       const container = new Container();

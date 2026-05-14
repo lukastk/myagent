@@ -11,6 +11,9 @@
  *   Ctrl+Alt+P       - cycle to next scoped model (or all available if no scope set)
  *   Shift+Ctrl+Alt+P - cycle to previous scoped model
  */
+import { readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import {
@@ -29,9 +32,45 @@ interface ModelChoice {
   name: string;
 }
 
+const SETTINGS_KEY = "sessionModelScopeIds";
+const SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
+
 /** Extension-scoped model IDs for Ctrl+Alt+P cycling. null = use all available models. */
 let sessionScopedIds: Set<string> | null = null;
 
+function loadScope(): void {
+  try {
+    const raw = readFileSync(SETTINGS_PATH, "utf-8");
+    const settings = JSON.parse(raw);
+    const ids: unknown = settings[SETTINGS_KEY];
+    if (Array.isArray(ids) && ids.length > 0) {
+      sessionScopedIds = new Set(ids.map(String));
+    } else {
+      sessionScopedIds = null;
+    }
+  } catch {
+    sessionScopedIds = null;
+  }
+}
+
+function saveScope(ids: Set<string> | null): void {
+  try {
+    let settings: Record<string, unknown> = {};
+    try {
+      settings = JSON.parse(readFileSync(SETTINGS_PATH, "utf-8"));
+    } catch {
+      // file doesn't exist or is invalid, start fresh
+    }
+    if (ids === null || ids.size === 0) {
+      delete settings[SETTINGS_KEY];
+    } else {
+      settings[SETTINGS_KEY] = [...ids].sort();
+    }
+    writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n");
+  } catch (err) {
+    console.error("[session-model] Failed to save scope:", err);
+  }
+}
 /**
  * Collect available models across all providers.
  * Uses getAvailable() which only returns models with valid API keys.
@@ -46,6 +85,8 @@ async function getAvailableModels(ctx: ExtensionCommandContext): Promise<ModelCh
 }
 
 export default function (pi: ExtensionAPI) {
+  loadScope();
+
   pi.registerCommand("smodel", {
     description:
       "Switch model for current session only (does not modify settings.json)",
@@ -111,7 +152,7 @@ export default function (pi: ExtensionAPI) {
   // Command: /smodel-scope — configure which models Ctrl+Alt+P cycles through
   pi.registerCommand("smodel-scope", {
     description:
-      "Configure which models Ctrl+Alt+P cycles through (session only)",
+      "Configure which models Ctrl+Alt+P cycles through",
     handler: async (_args, ctx) => {
       const models = await getAvailableModels(ctx);
       if (models.length === 0) {
@@ -126,16 +167,17 @@ export default function (pi: ExtensionAPI) {
       const result = await showScopeSelector(ctx, models, currentIds);
       if (result !== null) {
         sessionScopedIds = result.size === models.length ? null : result;
+        saveScope(sessionScopedIds);
         const count = result.size;
         const total = models.length;
         if (sessionScopedIds === null) {
           ctx.ui.notify(
-            `Ctrl+Alt+P scope: all ${total} models (session only)`,
+            `Ctrl+Alt+P scope: all ${total} models`,
             "info"
           );
         } else {
           ctx.ui.notify(
-            `Ctrl+Alt+P scope: ${count}/${total} models (session only)`,
+            `Ctrl+Alt+P scope: ${count}/${total} models`,
             "info"
           );
         }

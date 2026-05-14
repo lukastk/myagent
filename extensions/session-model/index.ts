@@ -1,21 +1,22 @@
 /**
  * Session Model Extension
  *
- * Adds a `/smodel` command to switch models for the current session only,
- * without modifying settings.json. The built-in `/model` command persists
- * to settings.json; this command uses `pi.setModel()` instead.
+ * Adds commands and shortcuts for session-only model management:
  *
- * Also adds keyboard shortcuts for quick model cycling:
- *   Ctrl+Alt+P       - cycle to next available model
- *   Shift+Ctrl+Alt+P - cycle to previous available model
- *
- * Usage:
  *   `/smodel`              - show a selector to pick a model
  *   `/smodel claude-sonnet` - fuzzy-match and switch directly
+ *   `/smodel-scope`         - configure which models Ctrl+Alt+P cycles through
+ *
+ * Keyboard shortcuts:
+ *   Ctrl+Alt+P       - cycle to next scoped model (or all available if no scope set)
+ *   Shift+Ctrl+Alt+P - cycle to previous scoped model
+ */
 import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import {
   Container,
+  Key,
+  matchesKey,
   type SelectItem,
   SelectList,
   Text,
@@ -27,6 +28,9 @@ interface ModelChoice {
   id: string;
   name: string;
 }
+
+/** Extension-scoped model IDs for Ctrl+Alt+P cycling. null = use all available models. */
+let sessionScopedIds: Set<string> | null = null;
 
 /**
  * Collect available models across all providers.
@@ -102,6 +106,41 @@ export default function (pi: ExtensionAPI) {
   pi.registerShortcut("shift+ctrl+alt+p", {
     description: "Cycle to previous model (session only)",
     handler: async (ctx) => cycleToModel(pi, ctx, "backward"),
+  });
+
+  // Command: /smodel-scope — configure which models Ctrl+Alt+P cycles through
+  pi.registerCommand("smodel-scope", {
+    description:
+      "Configure which models Ctrl+Alt+P cycles through (session only)",
+    handler: async (_args, ctx) => {
+      const models = await getAvailableModels(ctx);
+      if (models.length === 0) {
+        ctx.ui.notify("No models available", "error");
+        return;
+      }
+
+      const currentIds = sessionScopedIds
+        ? new Set(sessionScopedIds)
+        : new Set(models.map((m) => `${m.provider}/${m.id}`));
+
+      const result = await showScopeSelector(ctx, models, currentIds);
+      if (result !== null) {
+        sessionScopedIds = result.size === models.length ? null : result;
+        const count = result.size;
+        const total = models.length;
+        if (sessionScopedIds === null) {
+          ctx.ui.notify(
+            `Ctrl+Alt+P scope: all ${total} models (session only)`,
+            "info"
+          );
+        } else {
+          ctx.ui.notify(
+            `Ctrl+Alt+P scope: ${count}/${total} models (session only)`,
+            "info"
+          );
+        }
+      }
+    },
   });
 }
 
@@ -268,33 +307,299 @@ async function showSelector(
 }
 
 /**
- * Cycle to the next or previous available model (session only).
- * Uses ctx.modelRegistry.getAvailable() which returns only models with valid API keys.
+ * Multi-select TUI for configuring which models Ctrl+Alt+P cycles through.
+ */
+async function showScopeSelector(
+  ctx: ExtensionCommandContext,
+  models: ModelChoice[],
+  currentIds: Set<string>
+): Promise<Set<string> | null> {
+  const allItems = models.map((m) => ({
+    key: `${m.provider}/${m.id}`,
+    label: m.name,
+    provider: m.provider,
+  }));
+
+  const initialEnabled = new Set(currentIds);
+
+  const result = await ctx.ui.custom<Set<string> | null>(
+    (tui, theme, _kb, done) => {
+      const maxVisible = 12;
+      let enabled = new Set(initialEnabled);
+      let searchQuery = "";
+      let selectedIndex = 0;
+
+      function filteredItems() {
+        if (!searchQuery) return allItems;
+        return fuzzyFilter(allItems, searchQuery, (item) => `${item.label} ${item.key}`);
+      }
+
+      const container = new Container();
+
+      // Top border
+      container.addChild(
+        new DynamicBorder((str) => theme.fg("accent", str))
+      );
+
+      // Header
+      container.addChild(
+        new Text(
+          theme.fg("accent", theme.bold("Configure Ctrl+Alt+P Scope"))
+        )
+      );
+
+      // Search display
+      const searchText = new Text(
+        theme.fg("muted", "Type to search..."),
+        0,
+        0
+      );
+      container.addChild(searchText);
+
+      // List container - rebuilt on every change
+      let listContainer = new Container();
+      container.addChild(listContainer);
+
+      // Footer
+      const footerText = new Text("", 0, 0);
+      container.addChild(footerText);
+
+      // Bottom border
+      container.addChild(
+        new DynamicBorder((str) => theme.fg("accent", str))
+      );
+
+      function updateSearchDisplay() {
+        if (searchQuery) {
+          searchText.setText(
+            theme.fg("accent", `Search: ${searchQuery}`)
+          );
+        } else {
+          searchText.setText(theme.fg("muted", "Type to search..."));
+        }
+        searchText.invalidate();
+      }
+
+      function updateFooter() {
+        const items = filteredItems();
+        const enabledCount = [...items].filter((i) => enabled.has(i.key)).length;
+        const totalFiltered = items.length;
+        const parts = [
+          theme.fg("dim", "↑↓ nav"),
+          theme.fg("dim", "· enter toggle"),
+          theme.fg("dim", "· ctrl+a all"),
+          theme.fg("dim", "· ctrl+x clear"),
+          theme.fg("dim", "· esc apply"),
+          theme.fg("accent", `· ${enabledCount}/${totalFiltered} selected`),
+        ];
+        footerText.setText(`  ${parts.join(" ")}`);
+        footerText.invalidate();
+      }
+
+      function renderList() {
+        const items = filteredItems();
+        selectedIndex = Math.min(selectedIndex, Math.max(0, items.length - 1));
+
+        listContainer.clear();
+        if (items.length === 0) {
+          listContainer.addChild(
+            new Text(theme.fg("warning", "  No matching models"), 0, 0)
+          );
+          return;
+        }
+
+        const start = Math.max(0, selectedIndex - Math.floor(maxVisible / 2));
+        const end = Math.min(items.length, start + maxVisible);
+
+        for (let i = start; i < end; i++) {
+          const item = items[i];
+          const isSelected = i === selectedIndex;
+          const isEnabled = enabled.has(item.key);
+          const prefix = isSelected
+            ? theme.fg("accent", "→ ")
+            : "  ";
+          const name = isSelected
+            ? theme.fg("accent", item.label)
+            : item.label;
+          const provider = theme.fg("muted", ` [${item.provider}]`);
+          const check = isEnabled
+            ? theme.fg("success", " ✓")
+            : theme.fg("dim", " ✗");
+          listContainer.addChild(
+            new Text(`${prefix}${name}${provider}${check}`, 0, 0)
+          );
+        }
+
+        if (start > 0 || end < items.length) {
+          listContainer.addChild(
+            new Text(
+              theme.fg("muted", `  (${selectedIndex + 1}/${items.length})`),
+              0,
+              0
+            )
+          );
+        }
+      }
+
+      function refresh() {
+        updateSearchDisplay();
+        renderList();
+        updateFooter();
+        container.invalidate();
+      }
+
+      refresh();
+
+      return {
+        render(width: number) {
+          return container.render(width);
+        },
+        invalidate() {
+          container.invalidate();
+        },
+        handleInput(data: string) {
+          // Escape — apply changes and close
+          if (matchesKey(data, Key.escape)) {
+            done(enabled);
+            return;
+          }
+
+          // Ctrl+C — cancel (revert to original)
+          if (matchesKey(data, Key.ctrl("c"))) {
+            if (searchQuery) {
+              searchQuery = "";
+              refresh();
+            } else {
+              done(null);
+            }
+            return;
+          }
+
+          // Ctrl+A — enable all
+          if (matchesKey(data, Key.ctrl("a"))) {
+            const items = filteredItems();
+            for (const item of items) {
+              enabled.add(item.key);
+            }
+            refresh();
+            return;
+          }
+
+          // Ctrl+X — clear all
+          if (matchesKey(data, Key.ctrl("x"))) {
+            const items = filteredItems();
+            for (const item of items) {
+              enabled.delete(item.key);
+            }
+            refresh();
+            return;
+          }
+
+          // Backspace / Delete — clear search
+          if (data === "\x7f" || data === "\b") {
+            if (searchQuery.length > 0) {
+              searchQuery = searchQuery.slice(0, -1);
+              selectedIndex = 0;
+              refresh();
+            }
+            return;
+          }
+
+          // Printable character — add to search
+          if (data.length === 1 && data.charCodeAt(0) >= 32) {
+            searchQuery += data;
+            selectedIndex = 0;
+            refresh();
+            return;
+          }
+
+          // Up arrow
+          if (data === "\x1b[A") {
+            const items = filteredItems();
+            if (items.length === 0) return;
+            selectedIndex =
+              selectedIndex === 0 ? items.length - 1 : selectedIndex - 1;
+            refresh();
+            return;
+          }
+
+          // Down arrow
+          if (data === "\x1b[B") {
+            const items = filteredItems();
+            if (items.length === 0) return;
+            selectedIndex =
+              selectedIndex === items.length - 1 ? 0 : selectedIndex + 1;
+            refresh();
+            return;
+          }
+
+          // Enter — toggle
+          if (data === "\r") {
+            const items = filteredItems();
+            if (items.length === 0) return;
+            const item = items[selectedIndex];
+            if (enabled.has(item.key)) {
+              enabled.delete(item.key);
+            } else {
+              enabled.add(item.key);
+            }
+            refresh();
+            return;
+          }
+        },
+      };
+    }
+  );
+
+  return result;
+}
+
+/**
+ * Cycle to the next or previous model in the Ctrl+Alt+P scope.
+ * Falls back to all available models if no scope has been configured.
  */
 async function cycleToModel(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
   direction: "forward" | "backward"
 ): Promise<void> {
-  const models = ctx.modelRegistry.getAvailable();
-  if (models.length <= 1) return;
+  let allModels = ctx.modelRegistry.getAvailable();
+  if (allModels.length === 0) return;
+
+  // Filter by extension-scoped model IDs if configured
+  const scopeSet = sessionScopedIds;
+  if (scopeSet !== null) {
+    allModels = allModels.filter((m) =>
+      scopeSet.has(`${m.provider}/${m.id}`)
+    );
+    if (allModels.length === 0) {
+      ctx.ui.notify("No models in Ctrl+Alt+P scope", "warning");
+      return;
+    }
+  }
+
+  if (allModels.length <= 1) {
+    const label = scopeSet !== null ? "scope" : "available";
+    ctx.ui.notify(`Only one model in ${label}`, "info");
+    return;
+  }
 
   const currentModel = ctx.model;
   let currentIndex = -1;
   if (currentModel) {
-    currentIndex = models.findIndex(
+    currentIndex = allModels.findIndex(
       (m) => m.provider === currentModel.provider && m.id === currentModel.id
     );
   }
   if (currentIndex === -1) currentIndex = 0;
 
-  const len = models.length;
+  const len = allModels.length;
   const nextIndex =
     direction === "forward"
       ? (currentIndex + 1) % len
       : (currentIndex - 1 + len) % len;
 
-  const nextModel = models[nextIndex];
+  const nextModel = allModels[nextIndex];
   const success = await pi.setModel(nextModel);
   if (success) {
     const thinkingStr =

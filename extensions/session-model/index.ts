@@ -11,9 +11,9 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import {
   Container,
-  DynamicBorder,
   type SelectItem,
   SelectList,
   Text,
@@ -27,27 +27,15 @@ interface ModelChoice {
 
 /**
  * Collect available models across all providers.
+ * Uses getAvailable() which only returns models with valid API keys.
  */
-function getAvailableModels(ctx: ExtensionCommandContext): ModelChoice[] {
-  const registry = ctx.modelRegistry;
-  const models: ModelChoice[] = [];
-
-  // Iterate over all providers the registry knows about
-  for (const provider of registry.listProviders()) {
-    for (const model of registry.listModels(provider)) {
-      models.push({
-        provider,
-        id: model.id,
-        name: model.name || model.id,
-      });
-    }
-  }
-
-  return models;
-}
-
-function buildDescription(choice: ModelChoice): string {
-  return `${choice.provider}/${choice.id}`;
+async function getAvailableModels(ctx: ExtensionCommandContext): Promise<ModelChoice[]> {
+  const available = await ctx.modelRegistry.getAvailable();
+  return available.map((m) => ({
+    provider: m.provider,
+    id: m.id,
+    name: m.name || m.id,
+  }));
 }
 
 /**
@@ -68,7 +56,7 @@ export default function (pi: ExtensionAPI) {
     description:
       "Switch model for current session only (does not modify settings.json)",
     handler: async (args, ctx) => {
-      const models = getAvailableModels(ctx);
+      const models = await getAvailableModels(ctx);
       if (models.length === 0) {
         ctx.ui.notify("No models available", "error");
         return;

@@ -5,12 +5,14 @@
  * without modifying settings.json. The built-in `/model` command persists
  * to settings.json; this command uses `pi.setModel()` instead.
  *
+ * Also adds keyboard shortcuts for quick model cycling:
+ *   Ctrl+Alt+P       - cycle to next available model
+ *   Shift+Ctrl+Alt+P - cycle to previous available model
+ *
  * Usage:
  *   `/smodel`              - show a selector to pick a model
  *   `/smodel claude-sonnet` - fuzzy-match and switch directly
- */
-
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import {
   Container,
@@ -88,6 +90,18 @@ export default function (pi: ExtensionAPI) {
       // No args: show full selector
       await showSelector(ctx, pi, models);
     },
+  });
+
+  // Keyboard shortcut: Ctrl+Alt+P — cycle to next model (session only)
+  pi.registerShortcut("ctrl+alt+p", {
+    description: "Cycle to next model (session only)",
+    handler: async (ctx) => cycleToModel(pi, ctx, "forward"),
+  });
+
+  // Keyboard shortcut: Shift+Ctrl+Alt+P — cycle to previous model (session only)
+  pi.registerShortcut("shift+ctrl+alt+p", {
+    description: "Cycle to previous model (session only)",
+    handler: async (ctx) => cycleToModel(pi, ctx, "backward"),
   });
 }
 
@@ -250,5 +264,45 @@ async function showSelector(
     } else {
       ctx.ui.notify(`No API key for ${provider}/${id}`, "error");
     }
+  }
+}
+
+/**
+ * Cycle to the next or previous available model (session only).
+ * Uses ctx.modelRegistry.getAvailable() which returns only models with valid API keys.
+ */
+async function cycleToModel(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  direction: "forward" | "backward"
+): Promise<void> {
+  const models = ctx.modelRegistry.getAvailable();
+  if (models.length <= 1) return;
+
+  const currentModel = ctx.model;
+  let currentIndex = -1;
+  if (currentModel) {
+    currentIndex = models.findIndex(
+      (m) => m.provider === currentModel.provider && m.id === currentModel.id
+    );
+  }
+  if (currentIndex === -1) currentIndex = 0;
+
+  const len = models.length;
+  const nextIndex =
+    direction === "forward"
+      ? (currentIndex + 1) % len
+      : (currentIndex - 1 + len) % len;
+
+  const nextModel = models[nextIndex];
+  const success = await pi.setModel(nextModel);
+  if (success) {
+    const thinkingStr =
+      nextModel.reasoning ? ` (thinking: ${nextModel.reasoning})` : "";
+    const displayName = nextModel.name || nextModel.id;
+    ctx.ui.notify(
+      `Switched to ${nextModel.provider}/${displayName}${thinkingStr} (session only)`,
+      "info"
+    );
   }
 }

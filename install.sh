@@ -369,12 +369,12 @@ echo "==> Installing external extensions"
 if [ ! -f "$EXTENSIONS_LIST" ]; then
     echo "    No external_extensions.txt found, skipping."
 else
-    while IFS= read -r line || [ -n "$line" ]; do
+    while IFS= read -r line <&3 || [ -n "$line" ]; do
         [ -z "$line" ] && continue
         echo "    $line"
         pi install "$line"
         ensure_state_line "$EXT_STATE_FILE" "$line"
-    done < "$tmp_external_extensions"
+    done 3< "$tmp_external_extensions"
 fi
 
 echo ""
@@ -382,12 +382,12 @@ echo "==> Installing platform-specific extensions"
 
 if [ "$(uname -s)" = "Darwin" ]; then
     if [ -s "$tmp_mac_extensions" ]; then
-        while IFS= read -r line || [ -n "$line" ]; do
+        while IFS= read -r line <&3 || [ -n "$line" ]; do
             [ -z "$line" ] && continue
             echo "    $line (macOS)"
             pi install "$line"
             ensure_state_line "$EXT_STATE_FILE" "$line"
-        done < "$tmp_mac_extensions"
+        done 3< "$tmp_mac_extensions"
     else
         echo "    No macOS extension entries found, skipping."
     fi
@@ -406,13 +406,13 @@ else
         exit 1
     fi
 
-    while IFS= read -r line || [ -n "$line" ]; do
+    while IFS= read -r line <&3 || [ -n "$line" ]; do
         [ -z "$line" ] && continue
 
         echo "    $line"
         npx skills add "$line" -g -y
         ensure_state_line "$SKILL_STATE_FILE" "$line"
-    done < "$tmp_external_skills"
+    done 3< "$tmp_external_skills"
 fi
 
 if [ "$PRUNE" = true ]; then
@@ -429,7 +429,7 @@ if [ "$PRUNE" = true ]; then
         pi list | sed -n 's/^  \([^[:space:]].*\)$/\1/p' > "$installed_extension_sources"
 
         removed_any=false
-        while IFS= read -r source || [ -n "$source" ]; do
+        while IFS= read -r source <&3 || [ -n "$source" ]; do
             [ -z "$source" ] && continue
 
             if file_contains_line "$tmp_effective_external_extensions" "$source"; then
@@ -448,7 +448,7 @@ if [ "$PRUNE" = true ]; then
                 echo "    $source (already absent)"
                 remove_state_line "$EXT_STATE_FILE" "$source"
             fi
-        done < "$EXT_STATE_FILE"
+        done 3< "$EXT_STATE_FILE"
 
         if [ "$removed_any" = false ]; then
             echo "    No external extensions to prune"
@@ -469,7 +469,7 @@ if [ "$PRUNE" = true ]; then
         npx skills ls -g --json | sed -n 's/.*"name":[[:space:]]*"\([^"]*\)".*/\1/p' > "$installed_skill_names"
 
         removed_any=false
-        while IFS= read -r source || [ -n "$source" ]; do
+        while IFS= read -r source <&3 || [ -n "$source" ]; do
             [ -z "$source" ] && continue
 
             if file_contains_line "$tmp_external_skills" "$source"; then
@@ -490,7 +490,7 @@ if [ "$PRUNE" = true ]; then
                 echo "    $skill_name (from $source) already absent"
                 remove_state_line "$SKILL_STATE_FILE" "$source"
             fi
-        done < "$SKILL_STATE_FILE"
+        done 3< "$SKILL_STATE_FILE"
 
         if [ "$removed_any" = false ]; then
             echo "    No external skills to prune"

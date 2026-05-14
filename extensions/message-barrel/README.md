@@ -16,3 +16,4 @@ Save draft messages and paste them later into the input editor.
 
 - Barrel contents are persisted in the session (`custom` entries), so they survive `/reload` and session resume.
 - Messages are removed from the barrel after being pasted.
+- When the barrel has saved messages, a warning widget is shown below the editor with the current count.

@@ -62,6 +62,25 @@ export default function (pi: ExtensionAPI) {
 		} satisfies BarrelStateEntry);
 	}
 
+	function updateBarrelWidget(ctx: ExtensionContext): void {
+		if (!ctx.hasUI) return;
+
+		if (barrel.length === 0) {
+			ctx.ui.setWidget("message-barrel-indicator", undefined);
+			return;
+		}
+
+		const itemLabel = barrel.length === 1 ? "message" : "messages";
+		ctx.ui.setWidget(
+			"message-barrel-indicator",
+			[
+				ctx.ui.theme.fg("warning", `⚠ ${barrel.length} ${itemLabel} in barrel`),
+				ctx.ui.theme.fg("muted", "Press Ctrl+Alt+B or run /barrel to paste"),
+			],
+			{ placement: "belowEditor" },
+		);
+	}
+
 	function saveTextToBarrel(text: string, ctx: ExtensionContext): boolean {
 		if (!text.trim()) {
 			ctx.ui.notify("Editor is empty. Nothing saved to barrel.", "warning");
@@ -75,6 +94,7 @@ export default function (pi: ExtensionAPI) {
 		};
 		barrel.push(item);
 		persist();
+		updateBarrelWidget(ctx);
 
 		ctx.ui.notify(`Saved to barrel: ${preview(text)}`, "info");
 		return true;
@@ -99,6 +119,7 @@ export default function (pi: ExtensionAPI) {
 		const item = barrel[selectedIndex];
 		barrel.splice(selectedIndex, 1);
 		persist();
+		updateBarrelWidget(ctx);
 
 		ctx.ui.pasteToEditor(item.text);
 		ctx.ui.notify("Pasted barrel message into editor.", "info");
@@ -111,8 +132,8 @@ export default function (pi: ExtensionAPI) {
 			.pop();
 
 		barrel = asBarrelItems((entry?.data as BarrelStateEntry | undefined)?.items);
+		updateBarrelWidget(ctx);
 	});
-
 	function saveCurrentEditorToBarrel(ctx: ExtensionContext): void {
 		const text = ctx.ui.getEditorText();
 		const saved = saveTextToBarrel(text, ctx);
@@ -133,6 +154,12 @@ export default function (pi: ExtensionAPI) {
 		handler: async (ctx) => {
 			await pickAndPasteFromBarrel(ctx);
 		},
+	});
+
+
+	pi.on("session_shutdown", async (_event, ctx) => {
+		if (!ctx.hasUI) return;
+		ctx.ui.setWidget("message-barrel-indicator", undefined);
 	});
 
 	pi.registerCommand("barrel", {

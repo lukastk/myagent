@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EXTENSIONS_DIR="$HOME/.pi/agent/extensions"
 EXTENSIONS_LIST="$SCRIPT_DIR/external_extensions.txt"
+EXTENSIONS_MAC_LIST="$SCRIPT_DIR/external_extensions_mac.txt"
 SKILLS_DIR="$HOME/.agents/skills"
 SKILLS_LIST="$SCRIPT_DIR/external_skills.txt"
 MCP_CONFIG="$SCRIPT_DIR/mcp.json"
@@ -214,11 +215,19 @@ link_directory() {
 shopt -s nullglob
 
 new_tmp_file tmp_external_extensions
+new_tmp_file tmp_mac_extensions
+new_tmp_file tmp_effective_external_extensions
 new_tmp_file tmp_external_skills
 new_tmp_file tmp_local_extension_names
 new_tmp_file tmp_local_skill_names
 
 normalize_list_file "$EXTENSIONS_LIST" "$tmp_external_extensions"
+: > "$tmp_mac_extensions"
+if [ "$(uname -s)" = "Darwin" ] && [ -f "$EXTENSIONS_MAC_LIST" ]; then
+    normalize_list_file "$EXTENSIONS_MAC_LIST" "$tmp_mac_extensions"
+fi
+cat "$tmp_external_extensions" "$tmp_mac_extensions" > "$tmp_effective_external_extensions"
+sort -u "$tmp_effective_external_extensions" -o "$tmp_effective_external_extensions"
 normalize_list_file "$SKILLS_LIST" "$tmp_external_skills"
 collect_local_names "$SCRIPT_DIR/extensions" "$tmp_local_extension_names"
 collect_local_names "$SCRIPT_DIR/skills" "$tmp_local_skill_names"
@@ -371,21 +380,19 @@ fi
 echo ""
 echo "==> Installing platform-specific extensions"
 
-EXTENSIONS_MAC_LIST="$SCRIPT_DIR/external_extensions_mac.txt"
-
-if [ "$(uname -s)" = "Darwin" ] && [ -f "$EXTENSIONS_MAC_LIST" ]; then
-    new_tmp_file tmp_mac_extensions
-    normalize_list_file "$EXTENSIONS_MAC_LIST" "$tmp_mac_extensions"
-    while IFS= read -r line || [ -n "$line" ]; do
-        [ -z "$line" ] && continue
-        echo "    $line (macOS)"
-        pi install "$line"
-        ensure_state_line "$EXT_STATE_FILE" "$line"
-    done < "$tmp_mac_extensions"
-elif [ "$(uname -s)" != "Darwin" ]; then
-    echo "    Skipping macOS extensions (not on Darwin)"
+if [ "$(uname -s)" = "Darwin" ]; then
+    if [ -s "$tmp_mac_extensions" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            [ -z "$line" ] && continue
+            echo "    $line (macOS)"
+            pi install "$line"
+            ensure_state_line "$EXT_STATE_FILE" "$line"
+        done < "$tmp_mac_extensions"
+    else
+        echo "    No macOS extension entries found, skipping."
+    fi
 else
-    echo "    No external_extensions_mac.txt found, skipping."
+    echo "    Skipping macOS extensions (not on Darwin)"
 fi
 
 echo ""
@@ -425,7 +432,7 @@ if [ "$PRUNE" = true ]; then
         while IFS= read -r source || [ -n "$source" ]; do
             [ -z "$source" ] && continue
 
-            if file_contains_line "$tmp_external_extensions" "$source"; then
+            if file_contains_line "$tmp_effective_external_extensions" "$source"; then
                 continue
             fi
 

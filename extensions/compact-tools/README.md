@@ -47,6 +47,26 @@ pi -e ./extensions/compact-tools
 PI_COMPACT_TOOLS_OVERRIDE_READ_EDIT=1 pi -e ./extensions/compact-tools
 ```
 
+## Tool exclusions via config file
+
+Configure exclusions in `config.json` next to `index.ts`:
+
+```json
+{
+  "excludeTools": ["bash"]
+}
+```
+
+This is useful when another extension provides the same tool name (for example `pi-bash-live-view` for `bash`).
+
+## Optional env override (one-off sessions)
+
+You can still exclude additional tools temporarily:
+
+```bash
+PI_COMPACT_TOOLS_EXCLUDE_TOOLS="grep ls" pi
+```
+
 ## Install into your local Pi setup
 
 ```bash

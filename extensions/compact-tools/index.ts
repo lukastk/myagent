@@ -24,6 +24,9 @@ import {
 	wrapTextWithAnsi,
 } from "@mariozechner/pi-tui";
 import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync, readFileSync } from "node:fs";
 
 type RenderTheme = {
 	fg: (key: string, text: string) => string;
@@ -43,6 +46,68 @@ type ToolOutputRecord = {
 	preview: string;
 	lineCount: number;
 };
+
+const compactToolNames = ["bash", "write", "find", "grep", "ls", "read", "edit"] as const;
+type CompactToolName = (typeof compactToolNames)[number];
+
+type CompactToolsConfig = {
+	excludeTools?: CompactToolName[];
+};
+
+const extensionDir = dirname(fileURLToPath(import.meta.url));
+const compactToolsConfigPath = join(extensionDir, "config.json");
+
+function parseExcludedCompactTools(value: string | undefined): Set<CompactToolName> {
+	const excluded = new Set<CompactToolName>();
+	if (!value) return excluded;
+
+	for (const token of value.split(/[\s,]+/)) {
+		const name = token.trim().toLowerCase();
+		if (!name) continue;
+		if ((compactToolNames as readonly string[]).includes(name)) {
+			excluded.add(name as CompactToolName);
+		}
+	}
+
+	return excluded;
+}
+
+function readExcludedToolsFromConfig(): Set<CompactToolName> {
+	if (!existsSync(compactToolsConfigPath)) return new Set();
+
+	const raw = readFileSync(compactToolsConfigPath, "utf8");
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (error) {
+		throw new Error(`compact-tools config is not valid JSON at ${compactToolsConfigPath}: ${error instanceof Error ? error.message : String(error)}`);
+	}
+
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		throw new Error(`compact-tools config at ${compactToolsConfigPath} must be a JSON object`);
+	}
+
+	const config = parsed as CompactToolsConfig;
+	if (config.excludeTools === undefined) return new Set();
+	if (!Array.isArray(config.excludeTools)) {
+		throw new Error(`compact-tools config field "excludeTools" at ${compactToolsConfigPath} must be an array`);
+	}
+
+	const excluded = new Set<CompactToolName>();
+	for (const name of config.excludeTools) {
+		if (typeof name !== "string") {
+			throw new Error(`compact-tools config field "excludeTools" at ${compactToolsConfigPath} must only contain strings`);
+		}
+		if (!(compactToolNames as readonly string[]).includes(name)) {
+			throw new Error(
+				`compact-tools config field "excludeTools" contains unsupported tool "${name}" at ${compactToolsConfigPath}. Supported tools: ${compactToolNames.join(", ")}`,
+			);
+		}
+		excluded.add(name as CompactToolName);
+	}
+
+	return excluded;
+}
 
 function shortenPath(path: string): string {
 	const home = homedir();
@@ -381,8 +446,11 @@ export default function (pi: ExtensionAPI) {
 	const overrideReadEdit =
 		process.env.PI_COMPACT_TOOLS_OVERRIDE_READ_EDIT === "1" ||
 		process.env.PI_COMPACT_TOOLS_OVERRIDE_READ_EDIT === "true";
+	const configExcludedToolNames = readExcludedToolsFromConfig();
+	const envExcludedToolNames = parseExcludedCompactTools(process.env.PI_COMPACT_TOOLS_EXCLUDE_TOOLS);
+	const excludedToolNames = new Set<CompactToolName>([...configExcludedToolNames, ...envExcludedToolNames]);
 
-	const trackedToolNames = new Set(["bash", "write", "find", "grep", "ls", "read", "edit"]);
+	const trackedToolNames = new Set(compactToolNames.filter((name) => !excludedToolNames.has(name)));
 
 	const toolOutputs: ToolOutputRecord[] = [];
 	const toolOutputsById = new Map<string, ToolOutputRecord>();
@@ -637,7 +705,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	if (overrideReadEdit) {
+	if (overrideReadEdit && trackedToolNames.has("read")) {
 		pi.registerTool({
 			name: "read",
 			label: "read",
@@ -668,8 +736,9 @@ export default function (pi: ExtensionAPI) {
 		});
 	}
 
-	pi.registerTool({
-		name: "bash",
+	if (trackedToolNames.has("bash")) {
+		pi.registerTool({
+			name: "bash",
 		label: "bash",
 		description:
 			"Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first).",
@@ -692,10 +761,12 @@ export default function (pi: ExtensionAPI) {
 			const summary = lineCount > 0 ? ` → ${lineCount} lines` : "";
 			return renderCollapsedErrorOrSummary(result, renderContext.isError, theme, summary, isToolSelected(renderContext.toolCallId));
 		},
-	});
+		});
+	}
 
-	pi.registerTool({
-		name: "write",
+	if (trackedToolNames.has("write")) {
+		pi.registerTool({
+			name: "write",
 		label: "write",
 		description:
 			"Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
@@ -716,9 +787,10 @@ export default function (pi: ExtensionAPI) {
 			if (expanded) return renderExpandedText(result, theme);
 			return renderCollapsedErrorOrSummary(result, renderContext.isError, theme, " → wrote", isToolSelected(renderContext.toolCallId));
 		},
-	});
+		});
+	}
 
-	if (overrideReadEdit) {
+	if (overrideReadEdit && trackedToolNames.has("edit")) {
 		pi.registerTool({
 			name: "edit",
 			label: "edit",
@@ -742,8 +814,9 @@ export default function (pi: ExtensionAPI) {
 		});
 	}
 
-	pi.registerTool({
-		name: "find",
+	if (trackedToolNames.has("find")) {
+		pi.registerTool({
+			name: "find",
 		label: "find",
 		description:
 			"Find files by name pattern (glob). Searches recursively from the specified path. Output limited to 200 results.",
@@ -766,10 +839,12 @@ export default function (pi: ExtensionAPI) {
 			const summary = count > 0 ? ` → ${count} files` : "";
 			return renderCollapsedErrorOrSummary(result, renderContext.isError, theme, summary, isToolSelected(renderContext.toolCallId));
 		},
-	});
+		});
+	}
 
-	pi.registerTool({
-		name: "grep",
+	if (trackedToolNames.has("grep")) {
+		pi.registerTool({
+			name: "grep",
 		label: "grep",
 		description:
 			"Search file contents by regex pattern. Uses ripgrep for fast searching. Output limited to 200 matches.",
@@ -793,10 +868,12 @@ export default function (pi: ExtensionAPI) {
 			const summary = count > 0 ? ` → ${count} matches` : "";
 			return renderCollapsedErrorOrSummary(result, renderContext.isError, theme, summary, isToolSelected(renderContext.toolCallId));
 		},
-	});
+		});
+	}
 
-	pi.registerTool({
-		name: "ls",
+	if (trackedToolNames.has("ls")) {
+		pi.registerTool({
+			name: "ls",
 		label: "ls",
 		description:
 			"List directory contents with file sizes. Shows files and directories with their sizes. Output limited to 500 entries.",
@@ -818,5 +895,6 @@ export default function (pi: ExtensionAPI) {
 			const summary = count > 0 ? ` → ${count} entries` : "";
 			return renderCollapsedErrorOrSummary(result, renderContext.isError, theme, summary, isToolSelected(renderContext.toolCallId));
 		},
-	});
+		});
+	}
 }

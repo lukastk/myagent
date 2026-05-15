@@ -10,6 +10,11 @@
       "command": "auggie",
       "args": ["--mcp", "--mcp-auto-workspace"],
       "lifecycle": "lazy"
+    },
+    "svelte": {
+      "command": "npx",
+      "args": ["-y", "@sveltejs/mcp"],
+      "lifecycle": "lazy"
     }
   }
 }

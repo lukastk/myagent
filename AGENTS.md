@@ -7,11 +7,15 @@ Personal Pi coding agent extensions, skills, and configuration.
 ```
 myagent/
 ├── AGENTS.md               # This file (also symlinked as CLAUDE.md)
-├── install.sh              # Installs all extensions + skills + MCP config
+├── install.sh              # Orchestrator — runs scripts/install-pi.sh && scripts/install-claude.sh
 ├── external_extensions.txt     # External extensions to install via `pi install`
 ├── external_extensions_mac.txt # macOS-only external extensions
 ├── external_skills.txt         # External skills to install via `npx skills add`
-├── mcp.json                # MCP server definitions (symlinked to ~/.config/mcp/mcp.json)
+├── mcp.json                # MCP server definitions (symlinked to ~/.config/mcp/mcp.json; also applied to Claude)
+├── scripts/
+│   ├── install-pi.sh                  # Pi-side install (extensions, skills, mcp.json symlinks)
+│   ├── install-claude.sh              # Claude Code install (skill symlinks + `claude mcp add-json`)
+│   └── configure-pi-tool-binaries.sh
 ├── extensions/             # Local extensions (each is a folder)
 │   └── <name>/
 │       ├── index.ts        # Extension entry point (default export)
@@ -24,15 +28,28 @@ myagent/
 
 ## How install.sh works
 
+`./install.sh` runs `scripts/install-pi.sh` then `scripts/install-claude.sh`.
+Pass `--prune` to forward it to both. Pass `--pi-only` or `--claude-only` to skip one.
+
+**`scripts/install-pi.sh`** — Pi-side:
 1. Symlinks each folder under `extensions/` into `~/.pi/agent/extensions/` so Pi auto-discovers them.
 2. Runs `npm install --omit=dev` for any extension that has a `package.json`.
 3. Symlinks each folder under `skills/` into `~/.agents/skills/` so Pi can discover local skills.
 4. Runs `npm install --omit=dev` for any skill that has a `package.json`.
-5. Symlinks `mcp.json` to `~/.config/mcp/mcp.json` so MCP servers are globally available.
-6. Reads `external_extensions.txt` and runs `pi install <source>` for each external extension.
-7. Reads `external_skills.txt` and runs `npx skills add <source> -g -y` for each external skill.
-8. If run with `--prune`, removes stale local symlinks and uninstalls previously managed external entries that are no longer listed.
-After running `install.sh`, reload Pi with `/reload` if it's already running.
+5. Symlinks `mcp.json` to `~/.config/mcp/mcp.json` and `~/.pi/agent/mcp.json`.
+6. Reads `external_extensions.txt` (+ `external_extensions_mac.txt` on macOS) and runs `pi install <source>`.
+7. Reads `external_skills.txt` and runs `npx skills add <source> -g -y`.
+8. With `--prune`, removes stale local symlinks and uninstalls previously managed external entries.
+
+After running install, reload Pi with `/reload` if it's running.
+
+**`scripts/install-claude.sh`** — Claude Code side:
+1. Symlinks each folder under `skills/` into `~/.claude/skills/` so Claude discovers local skills.
+2. Symlinks each external skill (resolved via `~/.agents/skills/<name>`) into `~/.claude/skills/`.
+3. For every server in `mcp.json`, runs `claude mcp remove <name> -s user` then `claude mcp add-json <name> ... -s user` (idempotent re-apply at user scope). Servers with a `cwd` field are wrapped as `sh -c "cd <cwd> && exec ..."` because `claude mcp add-json` silently drops `cwd`. `lifecycle` is Pi-specific and stripped.
+4. With `--prune`, removes Claude skill symlinks and MCP servers it previously installed but are no longer listed.
+
+Restart Claude Code to pick up new skills/MCP servers.
 
 ## How to write a new extension
 

@@ -5,11 +5,15 @@
  *
  *   `/smodel`              - show a selector to pick a model
  *   `/smodel claude-sonnet` - fuzzy-match and switch directly
- *   `/smodel-scope`         - configure which models Ctrl+Alt+P cycles through
+ *   `/smodel-scope`         - configure which models the scope feature uses
  *
  * Keyboard shortcuts:
+ *   Ctrl+Alt+L       - open the /smodel selector (mirrors Ctrl+L for /model)
  *   Ctrl+Alt+P       - cycle to next scoped model (or all available if no scope set)
  *   Shift+Ctrl+Alt+P - cycle to previous scoped model
+ *
+ * The selector understands a "Scope: all | scoped" toggle (Tab) when a
+ * scope is configured via /smodel-scope, just like pi's built-in /model.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -35,7 +39,8 @@ interface ModelChoice {
 const SETTINGS_KEY = "sessionModelScopeIds";
 const SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
 
-/** Extension-scoped model IDs for Ctrl+Alt+P cycling. null = use all available models. */
+/** Extension-scoped model IDs for Ctrl+Alt+P cycling and the selector scope toggle.
+ *  null = no scope configured (selector behaves like a plain list). */
 let sessionScopedIds: Set<string> | null = null;
 
 function loadScope(): void {
@@ -71,17 +76,72 @@ function saveScope(ids: Set<string> | null): void {
     console.error("[session-model] Failed to save scope:", err);
   }
 }
+
 /**
  * Collect available models across all providers.
  * Uses getAvailable() which only returns models with valid API keys.
  */
-async function getAvailableModels(ctx: ExtensionCommandContext): Promise<ModelChoice[]> {
+async function getAvailableModels(ctx: ExtensionContext): Promise<ModelChoice[]> {
   const available = await ctx.modelRegistry.getAvailable();
   return available.map((m) => ({
     provider: m.provider,
     id: m.id,
     name: m.name || m.id,
   }));
+}
+
+/**
+ * Open the /smodel selector. Shared between the `/smodel` command and the
+ * Ctrl+Alt+L shortcut.
+ */
+async function runSmodelSelector(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  args: string,
+): Promise<void> {
+  const models = await getAvailableModels(ctx);
+  if (models.length === 0) {
+    ctx.ui.notify("No models available", "error");
+    return;
+  }
+
+  const query = args.trim();
+  if (query) {
+    const matches = fuzzyFilter(models, query, (m) => `${m.provider} ${m.name} ${m.id}`);
+
+    if (matches.length === 0) {
+      ctx.ui.notify(`No model matching "${query}"`, "error");
+      return;
+    }
+
+    if (matches.length === 1) {
+      const choice = matches[0];
+      const model = ctx.modelRegistry.find(choice.provider, choice.id);
+      if (model) {
+        const success = await pi.setModel(model);
+        if (success) {
+          ctx.ui.notify(
+            `Model set to ${choice.provider}/${choice.id} (session only)`,
+            "info",
+          );
+        } else {
+          ctx.ui.notify(
+            `No API key for ${choice.provider}/${choice.id}`,
+            "error",
+          );
+        }
+      }
+      return;
+    }
+
+    // Multiple matches: open the full selector with the query pre-filled so
+    // the user can still toggle scope to widen/narrow the list.
+    await showSelector(ctx, pi, models, { initialSearch: query });
+    return;
+  }
+
+  // No args: show full selector with scope toggle (if configured).
+  await showSelector(ctx, pi, models);
 }
 
 export default function (pi: ExtensionAPI) {
@@ -91,49 +151,16 @@ export default function (pi: ExtensionAPI) {
     description:
       "Switch model for current session only (does not modify settings.json)",
     handler: async (args, ctx) => {
-      const models = await getAvailableModels(ctx);
-      if (models.length === 0) {
-        ctx.ui.notify("No models available", "error");
-        return;
-      }
+      await runSmodelSelector(pi, ctx, args ?? "");
+    },
+  });
 
-      // Direct switch: /smodel <query>
-      if (args?.trim()) {
-        const query = args.trim();
-        const matches = fuzzyFilter(models, query, (m) => `${m.provider} ${m.name} ${m.id}`);
-
-        if (matches.length === 0) {
-          ctx.ui.notify(`No model matching "${query}"`, "error");
-          return;
-        }
-
-        if (matches.length === 1) {
-          const choice = matches[0];
-          const model = ctx.modelRegistry.find(choice.provider, choice.id);
-          if (model) {
-            const success = await pi.setModel(model);
-            if (success) {
-              ctx.ui.notify(
-                `Model set to ${choice.provider}/${choice.id} (session only)`,
-                "info"
-              );
-            } else {
-              ctx.ui.notify(
-                `No API key for ${choice.provider}/${choice.id}`,
-                "error"
-              );
-            }
-          }
-          return;
-        }
-
-        // Multiple matches: show selector filtered to matches
-        await showSelector(ctx, pi, matches);
-        return;
-      }
-
-      // No args: show full selector
-      await showSelector(ctx, pi, models);
+  // Keyboard shortcut: Ctrl+Alt+L — open the /smodel selector
+  // (mirrors pi's built-in Ctrl+L which opens /model).
+  pi.registerShortcut("ctrl+alt+l", {
+    description: "Open /smodel selector (session only)",
+    handler: async (ctx) => {
+      await runSmodelSelector(pi, ctx, "");
     },
   });
 
@@ -149,10 +176,10 @@ export default function (pi: ExtensionAPI) {
     handler: async (ctx) => cycleToModel(pi, ctx, "backward"),
   });
 
-  // Command: /smodel-scope — configure which models Ctrl+Alt+P cycles through
+  // Command: /smodel-scope — configure which models the scope toggle uses
   pi.registerCommand("smodel-scope", {
     description:
-      "Configure which models Ctrl+Alt+P cycles through",
+      "Configure which models Ctrl+Alt+P / scoped selector cycle through",
     handler: async (_args, ctx) => {
       const models = await getAvailableModels(ctx);
       if (models.length === 0) {
@@ -173,12 +200,12 @@ export default function (pi: ExtensionAPI) {
         if (sessionScopedIds === null) {
           ctx.ui.notify(
             `Ctrl+Alt+P scope: all ${total} models`,
-            "info"
+            "info",
           );
         } else {
           ctx.ui.notify(
             `Ctrl+Alt+P scope: ${count}/${total} models`,
-            "info"
+            "info",
           );
         }
       }
@@ -187,44 +214,72 @@ export default function (pi: ExtensionAPI) {
 }
 
 async function showSelector(
-  ctx: ExtensionCommandContext,
+  ctx: ExtensionContext,
   pi: ExtensionAPI,
-  models: ModelChoice[]
+  allModels: ModelChoice[],
+  options: { initialSearch?: string } = {},
 ): Promise<void> {
-  const allItems: SelectItem[] = models.map((m) => ({
+  const allItems: SelectItem[] = allModels.map((m) => ({
     value: `${m.provider}/${m.id}`,
     label: m.name,
     description: `${m.provider}/${m.id}`,
   }));
 
+  const scopedKeys = sessionScopedIds;
+  const hasScope = scopedKeys !== null && scopedKeys.size > 0;
+  // Models that survive the scope filter — used to detect whether the
+  // "scoped" view would be empty (in which case we don't offer the toggle).
+  const scopedAvailable = hasScope
+    ? allItems.filter((it) => scopedKeys!.has(it.value))
+    : allItems;
+  const offerScope = hasScope && scopedAvailable.length > 0;
+
   const result = await ctx.ui.custom<string | null>(
     (tui, theme, _kb, done) => {
-      let searchQuery = "";
+      let searchQuery = options.initialSearch?.trim() ?? "";
+      // Default to "scoped" if a non-empty scope is configured, matching pi /model.
+      let scope: "all" | "scoped" = offerScope ? "scoped" : "all";
+
+      function scopedItems(): SelectItem[] {
+        if (scope === "scoped" && offerScope) {
+          return allItems.filter((it) => scopedKeys!.has(it.value));
+        }
+        return allItems;
+      }
 
       function filteredItems(): SelectItem[] {
-        if (!searchQuery) return allItems;
-        return fuzzyFilter(allItems, searchQuery, (item) => `${item.label} ${item.description ?? ""}`);
+        const base = scopedItems();
+        if (!searchQuery) return base;
+        return fuzzyFilter(base, searchQuery, (item) => `${item.label} ${item.description ?? ""}`);
       }
 
       const container = new Container();
 
       // Top border
       container.addChild(
-        new DynamicBorder((str) => theme.fg("accent", str))
+        new DynamicBorder((str) => theme.fg("accent", str)),
       );
 
       // Header
       container.addChild(
         new Text(
-          theme.fg("accent", theme.bold("Switch Model (session only)"))
-        )
+          theme.fg("accent", theme.bold("Switch Model (session only)")),
+        ),
       );
+
+      // Scope line (only when a scope is configured)
+      const scopeText = offerScope ? new Text("", 0, 0) : undefined;
+      const scopeHintText = offerScope ? new Text("", 0, 0) : undefined;
+      if (scopeText && scopeHintText) {
+        container.addChild(scopeText);
+        container.addChild(scopeHintText);
+      }
 
       // Search display (Text that updates as user types)
       const searchText = new Text(
         theme.fg("muted", "Type to search..."),
         0,
-        0
+        0,
       );
       container.addChild(searchText);
 
@@ -235,7 +290,7 @@ async function showSelector(
       function buildSelectList(
         items: SelectItem[],
         theme: any,
-        done: (value: string | null) => void
+        done: (value: string | null) => void,
       ): SelectList {
         const sl = new SelectList(items, Math.min(items.length, 15), {
           selectedPrefix: (text: string) => theme.fg("accent", text),
@@ -255,7 +310,7 @@ async function showSelector(
           container.children[idx] = buildSelectList(
             filteredItems(),
             theme,
-            done
+            done,
           );
           selectList = container.children[idx] as SelectList;
         }
@@ -263,27 +318,47 @@ async function showSelector(
       }
 
       // Footer
+      const footerHint = offerScope
+        ? "↑↓ navigate · enter select · tab scope · esc cancel · type to search"
+        : "↑↓ navigate · enter select · esc cancel · type to search";
       container.addChild(
-        new Text(
-          theme.fg("dim", "↑↓ navigate · enter select · esc cancel · type to search")
-        )
+        new Text(theme.fg("dim", footerHint)),
       );
 
       // Bottom border
       container.addChild(
-        new DynamicBorder((str) => theme.fg("accent", str))
+        new DynamicBorder((str) => theme.fg("accent", str)),
       );
+
+      function updateScopeDisplay() {
+        if (!scopeText || !scopeHintText) return;
+        const allLabel =
+          scope === "all" ? theme.fg("accent", "all") : theme.fg("muted", "all");
+        const scopedLabel =
+          scope === "scoped"
+            ? theme.fg("accent", "scoped")
+            : theme.fg("muted", "scoped");
+        scopeText.setText(
+          `${theme.fg("muted", "Scope: ")}${allLabel}${theme.fg("muted", " | ")}${scopedLabel}`,
+        );
+        scopeText.invalidate();
+        scopeHintText.setText(
+          `${theme.fg("accent", "tab")} ${theme.fg("muted", "scope (all/scoped)")}`,
+        );
+        scopeHintText.invalidate();
+      }
 
       function updateSearchDisplay() {
         if (searchQuery) {
-          searchText.setText(
-            theme.fg("accent", `Search: ${searchQuery}`)
-          );
+          searchText.setText(theme.fg("accent", `Search: ${searchQuery}`));
         } else {
           searchText.setText(theme.fg("muted", "Type to search..."));
         }
         searchText.invalidate();
       }
+
+      updateScopeDisplay();
+      updateSearchDisplay();
 
       return {
         render(width: number) {
@@ -293,6 +368,15 @@ async function showSelector(
           container.invalidate();
         },
         handleInput(data: string) {
+          // Tab — toggle scope (only when a scope is configured)
+          if (offerScope && matchesKey(data, Key.tab)) {
+            scope = scope === "all" ? "scoped" : "all";
+            updateScopeDisplay();
+            rebuildSelectList();
+            tui.requestRender();
+            return;
+          }
+
           // Escape with active search: clear search first, second esc cancels
           if (data === "\x1b" && searchQuery) {
             searchQuery = "";
@@ -327,7 +411,7 @@ async function showSelector(
           tui.requestRender();
         },
       };
-    }
+    },
   );
 
   if (!result) return;
@@ -340,7 +424,7 @@ async function showSelector(
     if (success) {
       ctx.ui.notify(
         `Model set to ${provider}/${id} (session only)`,
-        "info"
+        "info",
       );
     } else {
       ctx.ui.notify(`No API key for ${provider}/${id}`, "error");
@@ -349,12 +433,12 @@ async function showSelector(
 }
 
 /**
- * Multi-select TUI for configuring which models Ctrl+Alt+P cycles through.
+ * Multi-select TUI for configuring which models the scope toggle / Ctrl+Alt+P uses.
  */
 async function showScopeSelector(
   ctx: ExtensionCommandContext,
   models: ModelChoice[],
-  currentIds: Set<string>
+  currentIds: Set<string>,
 ): Promise<Set<string> | null> {
   const allItems = models.map((m) => ({
     key: `${m.provider}/${m.id}`,
@@ -380,21 +464,21 @@ async function showScopeSelector(
 
       // Top border
       container.addChild(
-        new DynamicBorder((str) => theme.fg("accent", str))
+        new DynamicBorder((str) => theme.fg("accent", str)),
       );
 
       // Header
       container.addChild(
         new Text(
-          theme.fg("accent", theme.bold("Configure Ctrl+Alt+P Scope"))
-        )
+          theme.fg("accent", theme.bold("Configure Ctrl+Alt+P Scope")),
+        ),
       );
 
       // Search display
       const searchText = new Text(
         theme.fg("muted", "Type to search..."),
         0,
-        0
+        0,
       );
       container.addChild(searchText);
 
@@ -408,13 +492,13 @@ async function showScopeSelector(
 
       // Bottom border
       container.addChild(
-        new DynamicBorder((str) => theme.fg("accent", str))
+        new DynamicBorder((str) => theme.fg("accent", str)),
       );
 
       function updateSearchDisplay() {
         if (searchQuery) {
           searchText.setText(
-            theme.fg("accent", `Search: ${searchQuery}`)
+            theme.fg("accent", `Search: ${searchQuery}`),
           );
         } else {
           searchText.setText(theme.fg("muted", "Type to search..."));
@@ -445,7 +529,7 @@ async function showScopeSelector(
         listContainer.clear();
         if (items.length === 0) {
           listContainer.addChild(
-            new Text(theme.fg("warning", "  No matching models"), 0, 0)
+            new Text(theme.fg("warning", "  No matching models"), 0, 0),
           );
           return;
         }
@@ -468,7 +552,7 @@ async function showScopeSelector(
             ? theme.fg("success", " ✓")
             : theme.fg("dim", " ✗");
           listContainer.addChild(
-            new Text(`${prefix}${name}${provider}${check}`, 0, 0)
+            new Text(`${prefix}${name}${provider}${check}`, 0, 0),
           );
         }
 
@@ -477,8 +561,8 @@ async function showScopeSelector(
             new Text(
               theme.fg("muted", `  (${selectedIndex + 1}/${items.length})`),
               0,
-              0
-            )
+              0,
+            ),
           );
         }
       }
@@ -590,7 +674,7 @@ async function showScopeSelector(
           }
         },
       };
-    }
+    },
   );
 
   return result;
@@ -603,7 +687,7 @@ async function showScopeSelector(
 async function cycleToModel(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
-  direction: "forward" | "backward"
+  direction: "forward" | "backward",
 ): Promise<void> {
   let allModels = ctx.modelRegistry.getAvailable();
   if (allModels.length === 0) return;
@@ -612,7 +696,7 @@ async function cycleToModel(
   const scopeSet = sessionScopedIds;
   if (scopeSet !== null) {
     allModels = allModels.filter((m) =>
-      scopeSet.has(`${m.provider}/${m.id}`)
+      scopeSet.has(`${m.provider}/${m.id}`),
     );
     if (allModels.length === 0) {
       ctx.ui.notify("No models in Ctrl+Alt+P scope", "warning");
@@ -630,7 +714,7 @@ async function cycleToModel(
   let currentIndex = -1;
   if (currentModel) {
     currentIndex = allModels.findIndex(
-      (m) => m.provider === currentModel.provider && m.id === currentModel.id
+      (m) => m.provider === currentModel.provider && m.id === currentModel.id,
     );
   }
   if (currentIndex === -1) currentIndex = 0;
@@ -649,7 +733,7 @@ async function cycleToModel(
     const displayName = nextModel.name || nextModel.id;
     ctx.ui.notify(
       `Switched to ${nextModel.provider}/${displayName}${thinkingStr} (session only)`,
-      "info"
+      "info",
     );
   }
 }

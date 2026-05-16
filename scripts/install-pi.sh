@@ -426,7 +426,7 @@ else
         [ -z "$line" ] && continue
 
         echo "    $line"
-        npx skills add "$line" -g -y
+        npx -y skills add "$line" -g -y
         ensure_state_line "$SKILL_STATE_FILE" "$line"
     done 3< "$tmp_external_skills"
 fi
@@ -482,7 +482,7 @@ if [ "$PRUNE" = true ]; then
         fi
 
         new_tmp_file installed_skill_names
-        npx skills ls -g --json | sed -n 's/.*"name":[[:space:]]*"\([^"]*\)".*/\1/p' > "$installed_skill_names"
+        npx -y skills ls -g --json | sed -n 's/.*"name":[[:space:]]*"\([^"]*\)".*/\1/p' > "$installed_skill_names"
 
         removed_any=false
         while IFS= read -r source <&3 || [ -n "$source" ]; do
@@ -497,7 +497,7 @@ if [ "$PRUNE" = true ]; then
 
             if file_contains_line "$installed_skill_names" "$skill_name"; then
                 echo "    removing $skill_name (from $source)"
-                if npx skills remove -g "$skill_name" -y; then
+                if npx -y skills remove -g "$skill_name" -y; then
                     remove_state_line "$SKILL_STATE_FILE" "$source"
                 else
                     echo "      failed to remove $skill_name; keeping it in state for retry"

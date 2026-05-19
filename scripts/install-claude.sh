@@ -204,7 +204,7 @@ else
     # `lifecycle` is Pi-specific and always stripped.
     new_tmp_file tmp_mcp_rows
     python3 - "$MCP_CONFIG" > "$tmp_mcp_rows" <<'PY'
-import json, shlex, sys
+import json, os, shlex, sys
 
 with open(sys.argv[1]) as f:
     data = json.load(f)
@@ -217,6 +217,7 @@ for name, cfg in (data.get("mcpServers") or {}).items():
     env = cfg.get("env") or {}
 
     if cwd:
+        cwd = os.path.expandvars(os.path.expanduser(cwd))
         wrapped = f"cd {shlex.quote(cwd)} && exec {shlex.quote(command)}"
         for a in args:
             wrapped += " " + shlex.quote(a)

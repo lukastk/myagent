@@ -10,9 +10,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Readability } from "@mozilla/readability";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { defineTool } from "@mariozechner/pi-coding-agent";
-import { Type, StringEnum } from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "@earendil-works/pi-coding-agent";
+import { Type, StringEnum } from "@earendil-works/pi-ai";
 import type { Static } from "@sinclair/typebox";
 import { type HTMLElement, parseHTML } from "linkedom";
 import type {

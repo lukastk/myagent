@@ -1,8 +1,8 @@
 /**
  * Unified Web Search Tool — multi-provider with automatic fallback.
  */
-import { defineTool } from "@mariozechner/pi-coding-agent";
-import { Type, StringEnum } from "@mariozechner/pi-ai";
+import { defineTool } from "@earendil-works/pi-coding-agent";
+import { Type, StringEnum } from "@earendil-works/pi-ai";
 import { SEARCH_SYSTEM_PROMPT, SEARCH_TOOL_DESCRIPTION } from "../prompts/search.js";
 import { getSearchProvider, resolveProviderChain, type SearchProvider } from "./provider.js";
 import type { SearchProviderId, SearchResponse } from "./types.js";

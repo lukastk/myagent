@@ -2,9 +2,9 @@
  * Fetch tool — fetches URLs and extracts clean text/markdown.
  * Supports 76 site-specific scrapers plus a general HTML rendering pipeline.
  */
-import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@mariozechner/pi-ai";
-import { Text } from "@mariozechner/pi-tui";
+import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Type } from "@earendil-works/pi-ai";
+import { Text } from "@earendil-works/pi-tui";
 import { ToolAbortError } from "../lib/errors.js";
 import { formatDimensionNote, resizeImage } from "../lib/image-resize.js";
 import { specialHandlers } from "../scrapers/index.js";

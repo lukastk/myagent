@@ -4,7 +4,7 @@
  * Provides three tools: web_search, browser, and fetch.
  * Transplanted from oh-my-pi's built-in web tools.
  */
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createFetchTool } from "./fetch/index.js";
 import { createBrowserTool } from "./browser/index.js";
 import { SEARCH_SYSTEM_PROMPT } from "./prompts/search.js";

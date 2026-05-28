@@ -1,7 +1,7 @@
-import { StringEnum } from "@mariozechner/pi-ai";
-import { Markdown, Text } from "@mariozechner/pi-tui";
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { withFileMutationQueue } from "@mariozechner/pi-coding-agent";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Markdown, Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { constants } from "fs";
 import { readFileSync } from "fs";

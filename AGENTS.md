@@ -64,7 +64,7 @@ extensions/my-extension/index.ts
 Every extension default-exports a function that receives the `ExtensionAPI` object:
 
 ```typescript
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
   // Register tools, commands, shortcuts, event handlers, etc.
@@ -78,8 +78,8 @@ The function can be async if you need to do setup work at load time.
 **Custom tool:**
 
 ```typescript
-import { Type } from "@mariozechner/pi-ai";
-import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@earendil-works/pi-ai";
+import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const myTool = defineTool({
   name: "my_tool",
@@ -146,7 +146,7 @@ Pi's own packages should go in `peerDependencies` with `"*"`:
 ```json
 {
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
+    "@earendil-works/pi-coding-agent": "*",
     "@sinclair/typebox": "*"
   }
 }
@@ -168,10 +168,10 @@ Once it works, run `./install.sh` to symlink it into place. Extensions in auto-d
 
 | Package | What it provides |
 |---------|-----------------|
-| `@mariozechner/pi-coding-agent` | `ExtensionAPI`, `ExtensionContext`, `defineTool`, `isToolCallEventType`, `withFileMutationQueue`, `truncateHead`, `truncateTail` |
-| `@mariozechner/pi-ai` | `Type` (re-export of typebox), `StringEnum` |
+| `@earendil-works/pi-coding-agent` | `ExtensionAPI`, `ExtensionContext`, `defineTool`, `isToolCallEventType`, `withFileMutationQueue`, `truncateHead`, `truncateTail` |
+| `@earendil-works/pi-ai` | `Type` (re-export of typebox), `StringEnum` |
 | `@sinclair/typebox` | `Type.Object`, `Type.String`, `Type.Optional`, `Type.Array`, etc. |
-| `@mariozechner/pi-tui` | TUI components if building custom UI |
+| `@earendil-works/pi-tui` | TUI components if building custom UI |
 
 ## Key extension API methods
 

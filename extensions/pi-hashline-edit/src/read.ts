@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   createReadTool,
   formatSize,
@@ -6,9 +6,9 @@ import {
   DEFAULT_MAX_LINES,
   truncateHead,
   type TruncationResult,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { Text } from "@mariozechner/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 import { readFileSync } from "fs";
 import { access as fsAccess } from "fs/promises";
 import { constants } from "fs";

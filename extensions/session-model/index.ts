@@ -18,8 +18,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import {
   Container,
   Key,
@@ -28,7 +28,7 @@ import {
   SelectList,
   Text,
   fuzzyFilter,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 
 interface ModelChoice {
   provider: string;

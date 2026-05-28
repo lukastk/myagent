@@ -6,7 +6,7 @@ Personal [Pi coding agent](https://github.com/badlogic/pi-mono) extensions, skil
 
 ```bash
 # Install Pi globally
-npm install -g @mariozechner/pi-coding-agent
+npm install -g @earendil-works/pi-coding-agent
 
 # Install local + external extensions and skills
 ./install.sh

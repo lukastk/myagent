@@ -4,6 +4,10 @@
 
 # Local clone in extensions/pi-hashline-edit replaces npm:pi-hashline-edit
 npm:pi-mcp-adapter
-npm:pi-slopchop
+# pi-slopchop is removed: its pi-render.ts dynamically resolves
+# @earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js by
+# walking up from its own install path, which doesn't visit mise's global
+# install location (~/.local/share/mise/...). Re-add once that's fixed
+# upstream.
 git:github.com/lukastk/pi-rpc-socket
 

@@ -116,10 +116,12 @@ remove_state_line() {
 
     [ -f "$state_file" ] || return 0
 
-    local tmp
-    new_tmp_file tmp
-    grep -Fxv -- "$line" "$state_file" > "$tmp" || true
-    mv "$tmp" "$state_file"
+    # Use a name distinct from `tmp` because new_tmp_file's own `local tmp`
+    # shadows a caller-declared `tmp` and leaves it unbound under set -u.
+    local tmp_path
+    new_tmp_file tmp_path
+    grep -Fxv -- "$line" "$state_file" > "$tmp_path" || true
+    mv "$tmp_path" "$state_file"
 }
 
 # Pi tool binary configuration lives in scripts/configure-pi-tool-binaries.sh

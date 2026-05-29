@@ -20,7 +20,7 @@ Use `--account <email>` to target a specific account. Use `--json` for structure
 
 ```bash
 gog --account lukas.kikuchi@gmail.com gmail search 'query' --max N
-gog --account lukas.kikuchi@gmail.com gmail get <messageId> --sanitize-content
+gog --account lukas.kikuchi@gmail.com gmail get <messageId> --format full
 gog --account lukas.kikuchi@gmail.com gmail search 'in:inbox' --max 10
 ```
 
@@ -29,7 +29,7 @@ gog --account lukas.kikuchi@gmail.com gmail search 'in:inbox' --max 10
 ```bash
 gog --account lukas.kikuchi@gmail.com calendar events --today
 gog --account lukas.kikuchi@gmail.com calendar events --from 2026-05-14 --to 2026-05-21
-gog --account lukas.kikuchi@gmail.com calendar create --summary "Meeting" --from "2026-05-14T10:00:00+01:00" --to "2026-05-14T10:30:00+01:00"
+gog --account lukas.kikuchi@gmail.com calendar create primary --summary "Meeting" --from "2026-05-14T10:00:00+01:00" --to "2026-05-14T10:30:00+01:00"
 ```
 
 ### Drive
@@ -37,7 +37,6 @@ gog --account lukas.kikuchi@gmail.com calendar create --summary "Meeting" --from
 ```bash
 gog --account lukas.kikuchi@gmail.com drive ls --parent <folderId>
 gog --account lukas.kikuchi@gmail.com drive get <fileId>
-gog --account lukas.kikuchi@gmail.com drive tree --parent <folderId>
 ```
 
 ### Docs and Sheets

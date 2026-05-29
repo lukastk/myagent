@@ -37,9 +37,11 @@ Pass `--prune` to forward it to both. Pass `--pi-only` or `--claude-only` to ski
 3. Symlinks each folder under `skills/` into `~/.agents/skills/` so Pi can discover local skills.
 4. Runs `npm install --omit=dev` for any skill that has a `package.json`.
 5. Symlinks `mcp.json` to `~/.config/mcp/mcp.json` and `~/.pi/agent/mcp.json`.
-6. Reads `external_extensions.txt` (+ `external_extensions_mac.txt` on macOS) and runs `pi install <source>`.
-7. Reads `external_skills.txt` and runs `npx skills add <source> -g -y`.
-8. With `--prune`, removes stale local symlinks and uninstalls previously managed external entries.
+6. Runs `scripts/configure-pi-tool-binaries.sh` to configure Pi tool binaries.
+7. Installs Playwright MCP (patched): persistently installs `@playwright/mcp` into `~/.local/playwright-mcp` and patches `crBrowser.js` to skip `Browser.setDownloadBehavior` so Brave's CDP connection works. (The `playwright` server in `mcp.json` points at this install.)
+8. Reads `external_extensions.txt` (+ `external_extensions_mac.txt` on macOS) and runs `pi install <source>`.
+9. Reads `external_skills.txt` and runs `npx -y skills add <source> -g -y`.
+10. With `--prune`, removes stale local symlinks and uninstalls previously managed external entries.
 
 After running install, reload Pi with `/reload` if it's running.
 
@@ -270,6 +272,8 @@ Then run `./install.sh`.
 MCP server definitions live in `mcp.json` at the repo root. This file is symlinked to `~/.config/mcp/mcp.json` by `install.sh`, making it the global MCP config.
 
 The `pi-mcp-adapter` extension (listed in `external_extensions.txt`) reads this config and bridges MCP tools into Pi. Servers are lazy — they spawn on first tool use and auto-disconnect after idle timeout.
+
+The `playwright` server is special-cased: instead of an `npx`-spawned lazy server, it runs against the patched persistent install at `~/.local/playwright-mcp` (`command: node`, `args: ["node_modules/@playwright/mcp/cli.js", "--cdp-endpoint", "http://localhost:9222"]`) that `scripts/install-pi.sh` creates and patches for Brave's CDP. See the install-pi.sh step above.
 
 ### Adding an MCP server
 

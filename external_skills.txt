@@ -6,3 +6,4 @@
 lukastk/boxyard@boxyard-cli
 lukastk/myrig@mysetup-navigator
 lukastk/appgarden@appgarden
+lukastk/mysystem@myvault

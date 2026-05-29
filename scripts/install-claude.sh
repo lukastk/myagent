@@ -61,10 +61,10 @@ mkdir -p "$STATE_DIR"
 TMP_FILES=()
 new_tmp_file() {
     local __var_name="$1"
-    local tmp
-    tmp="$(mktemp)"
-    printf -v "$__var_name" '%s' "$tmp"
-    TMP_FILES+=("$tmp")
+    local __tmp_path
+    __tmp_path="$(mktemp)"
+    printf -v "$__var_name" '%s' "$__tmp_path"
+    TMP_FILES+=("$__tmp_path")
 }
 cleanup_tmp_files() {
     if [ "${#TMP_FILES[@]}" -gt 0 ]; then

@@ -18,15 +18,19 @@ Create a new tmux session for a boxyard box and launch a coding agent in it, fol
 
 Mirrors `ms-enter-doc-box` in `~/mysetup/mysystem/mysystem-shell/cmds/enter.sh`:
 
-- **Box attached to a mysystem note** (mod/pad/etc.): `[<note_type>] <note_name> (<box_name>)`.
-  - Example: `[mod] sesh (sesh)` — box `sesh` attached to `mod/sesh.md`.
-- **Box attached to a note that has no `notetype`**: `<note_name> (<box_name>)`.
-- **Standalone box** (no attachment): `Box - <index_name>`.
+Every session name ends with ` <<box_id>>` (the box id in angle brackets) so
+it stays unique even when two boxes share a name.
+
+- **Box attached to a mysystem note** (mod/pad/etc.): `<box_name> ([<note_type>] <note_name>) <<box_id>>`.
+  - Example: `sesh ([mod] sesh) <20260527_ms6lpt>` — box `sesh` attached to `mod/sesh.md`.
+- **Box attached to a note that has no `notetype`**: `<box_name> (<note_name>) <<box_id>>`.
+- **Standalone box** (no attachment): `<box_name> <<box_id>>`.
 
 Where:
 - `note_type` comes from the attached note's `notetype` frontmatter.
 - `note_name` is the attached note's filename without `.md`.
 - `box_name` is the part after `__` in the index_name (`20260527_ms6lpt__sesh` → `sesh`).
+- `box_id` is the part before `__` in the index_name (`20260527_ms6lpt__sesh` → `20260527_ms6lpt`).
 
 ## Agent commands — Lukas's preferences
 
@@ -69,15 +73,15 @@ NOTE_NAME=$(basename "$ATTACHED_NOTE" .md)
 NOTE_TYPE=$(rg -m1 "^notetype:\s*(\S+)" "$ATTACHED_NOTE" -or '$1' 2>/dev/null)
 
 if [ -n "$NOTE_TYPE" ]; then
-  SESSION_NAME="[${NOTE_TYPE}] ${NOTE_NAME} (${BOX_NAME})"
+  SESSION_NAME="${BOX_NAME} ([${NOTE_TYPE}] ${NOTE_NAME}) <${BOX_ID}>"
 else
-  SESSION_NAME="${NOTE_NAME} (${BOX_NAME})"
+  SESSION_NAME="${BOX_NAME} (${NOTE_NAME}) <${BOX_ID}>"
 fi
 ```
 
 If no match (standalone box):
 ```bash
-SESSION_NAME="Box - ${INDEX_NAME}"
+SESSION_NAME="${BOX_NAME} <${BOX_ID}>"
 ```
 
 If **multiple** matches: ask Lukas which note should own the session.
@@ -127,7 +131,7 @@ Attach:  tmux -L mysystem switch-client -t "[mod] sesh (sesh)"
 
 ## Notes
 
-- If the box isn't attached to any note, the session uses the `Box - <index>` form — same as `ms-enter-box-by-name` would produce.
+- If the box isn't attached to any note, the session is named `<box_name> <<box_id>>` — same as `ms-enter-box-by-name` would produce.
 - If the session already exists, **don't recreate or relaunch the agent** — just print where to find it. Running `claude` a second time in a window that already has it would stack processes.
 - The socket can be overridden if Lukas explicitly asks for a non-`mysystem` server.
 - This skill is a stop-gap. Once `sesh new --ai <agent>` exists (see `github.com/lukastk/sesh` PLAN.md Phase 2), prefer that — it captures the spawned session's agent ID and registers it for liveness tracking.

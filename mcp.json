@@ -6,11 +6,6 @@
       "cwd": "~/.local/playwright-mcp",
       "lifecycle": "lazy"
     },
-    "auggie": {
-      "command": "auggie",
-      "args": ["--mcp", "--mcp-auto-workspace"],
-      "lifecycle": "lazy"
-    },
     "svelte": {
       "command": "npx",
       "args": ["-y", "@sveltejs/mcp"],

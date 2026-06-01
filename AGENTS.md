@@ -285,18 +285,24 @@ similar. A symlink would push that runtime churn back into this repo on every
 launch; a wholesale copy would wipe it. The overlay keeps this file a clean,
 minimal statement of desired settings while letting Pi manage its own state.
 
-Two keys are deliberately **not** declared here:
+**`packages`** is deliberately **not** declared here: the installed-extension
+list is owned by `external_extensions.txt` (+ the mac variant), applied via
+`pi install` in the step above. Declaring it here too would recreate a
+split-brain. (This split used to live across repos: myrig's
+`home/.pi/agent/settings.json.jinja` once hardcoded `packages`, re-seeding
+entries — e.g. `pi-slopchop` — that myagent had dropped. That template has been
+removed; myagent is now the sole owner.) To add a package, edit
+`external_extensions.txt` — not this file.
 
-- **`packages`** — the installed-extension list is owned by
-  `external_extensions.txt` (+ the mac variant), applied via `pi install` in the
-  step above. Declaring it here too would recreate a split-brain. (This split
-  used to live across repos: myrig's `home/.pi/agent/settings.json.jinja` once
-  hardcoded `packages`, re-seeding entries — e.g. `pi-slopchop` — that myagent
-  had dropped. That template has been removed; myagent is now the sole owner.)
-- **`shellPath`** — Pi auto-detects the shell; a static value would break termux
-  (whose zsh lives under `/data/data/com.termux/...`).
-
-To add a package, edit `external_extensions.txt` — not this file.
+**`shellPath`** is *injected by install-pi.sh*, not stored in `pi_settings.json`,
+because the correct path is machine-specific (`/bin/zsh` on mac, a
+`/data/data/com.termux/...` path on termux). Pi does **not** auto-detect zsh —
+with no `shellPath` its `getShellConfig()` goes straight to `/bin/bash`
+(`dist/utils/shell.js`), which is the bug this setting exists to fix. So the
+installer resolves the real zsh via `command -v zsh` and sets it, but only when
+zsh exists and the live settings don't already pin a `shellPath` (so a
+deliberate user choice is never overridden, and a zsh-less box is left to Pi's
+own `/bin/bash` fallback rather than getting a broken path).
 
 ## MCP servers
 

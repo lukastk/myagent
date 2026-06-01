@@ -295,22 +295,51 @@ echo "==> Merging Pi settings"
 # via `pi install`), `lastChangelogVersion`, etc. A symlink or wholesale copy
 # would clobber that runtime state, so we deliberately overlay instead.
 #
-# We intentionally do NOT declare `packages` (external_extensions.txt is the
-# single source of truth — those are installed by the `pi install` loop below)
-# or `shellPath` (Pi auto-detects; a static value would break termux).
+# We intentionally do NOT declare `packages` in pi_settings.json:
+# external_extensions.txt is the single source of truth (installed by the
+# `pi install` loop below). Declaring it here too would recreate a split-brain.
+#
+# `shellPath` IS injected, but computed here rather than stored statically,
+# because the correct path is machine-specific (/bin/zsh on mac, a termux path,
+# etc.). Pi does NOT auto-detect zsh: with no shellPath its getShellConfig()
+# goes straight to /bin/bash (see dist/utils/shell.js) — which is the original
+# bug this setting fixes. So we resolve the real zsh via `command -v zsh` and
+# set it, but only when zsh exists and the live settings don't already pin a
+# shellPath (never override a deliberate user choice; never set a bad path).
 if [ -f "$PI_SETTINGS_SRC" ]; then
     if ! command -v jq >/dev/null 2>&1; then
         echo "    jq is required to merge Pi settings."
         exit 1
     fi
     mkdir -p "$(dirname "$PI_SETTINGS_DEST")"
+
+    new_tmp_file tmp_overlay
+    cp "$PI_SETTINGS_SRC" "$tmp_overlay"
+
+    # Inject shellPath = zsh (resolved on this machine) unless the live settings
+    # already pin one. Skip silently if zsh isn't installed.
+    existing_shell=""
+    if [ -f "$PI_SETTINGS_DEST" ]; then
+        existing_shell="$(jq -r '.shellPath // empty' "$PI_SETTINGS_DEST" 2>/dev/null || true)"
+    fi
+    if [ -n "$existing_shell" ]; then
+        echo "    shellPath (keeping existing: $existing_shell)"
+    elif zsh_path="$(command -v zsh)" && [ -n "$zsh_path" ]; then
+        new_tmp_file tmp_overlay2
+        jq --arg sh "$zsh_path" '. + {shellPath: $sh}' "$tmp_overlay" > "$tmp_overlay2"
+        mv "$tmp_overlay2" "$tmp_overlay"
+        echo "    shellPath -> $zsh_path"
+    else
+        echo "    shellPath (zsh not found — leaving Pi to fall back to /bin/bash)"
+    fi
+
     new_tmp_file tmp_merged_settings
     if [ -f "$PI_SETTINGS_DEST" ]; then
         # existing * ours → ours wins on conflicts, existing keys preserved
-        jq -s '.[0] * .[1]' "$PI_SETTINGS_DEST" "$PI_SETTINGS_SRC" > "$tmp_merged_settings"
+        jq -s '.[0] * .[1]' "$PI_SETTINGS_DEST" "$tmp_overlay" > "$tmp_merged_settings"
         echo "    settings.json (merged onto existing)"
     else
-        cp "$PI_SETTINGS_SRC" "$tmp_merged_settings"
+        cp "$tmp_overlay" "$tmp_merged_settings"
         echo "    settings.json (created)"
     fi
     mv "$tmp_merged_settings" "$PI_SETTINGS_DEST"

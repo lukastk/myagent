@@ -11,6 +11,7 @@ myagent/
 ├── external_extensions.txt     # External extensions to install via `pi install`
 ├── external_extensions_mac.txt # macOS-only external extensions
 ├── external_skills.txt         # External skills to install via `npx skills add`
+├── pi_settings.json        # Declarative Pi settings, shallow-merged onto ~/.pi/agent/settings.json
 ├── mcp.json                # MCP server definitions (symlinked to ~/.config/mcp/mcp.json; also applied to Claude)
 ├── scripts/
 │   ├── install-pi.sh                  # Pi-side install (extensions, skills, mcp.json symlinks)
@@ -38,12 +39,13 @@ Pass `--prune` to forward it to both. Pass `--pi-only` or `--claude-only` to ski
 2. Runs `npm install --omit=dev` for any extension that has a `package.json`.
 3. Symlinks each folder under `skills/` into `~/.agents/skills/` so Pi can discover local skills.
 4. Runs `npm install --omit=dev` for any skill that has a `package.json`.
-5. Symlinks `mcp.json` to `~/.config/mcp/mcp.json` and `~/.pi/agent/mcp.json`.
-6. Runs `scripts/configure-pi-tool-binaries.sh` to configure Pi tool binaries.
-7. Installs Playwright MCP (patched): persistently installs `@playwright/mcp` into `~/.local/playwright-mcp` and patches `crBrowser.js` to skip `Browser.setDownloadBehavior` so Brave's CDP connection works. Also symlinks the `brave-cdp-mcp` launcher (from `scripts/brave-cdp/`) next to that install. (The `playwright` server in `mcp.json` runs that launcher — see "Per-agent isolated Brave" below.)
-8. Reads `external_extensions.txt` (+ `external_extensions_mac.txt` on macOS) and runs `pi install <source>`.
-9. Reads `external_skills.txt` and runs `npx -y skills add <source> -g -y`.
-10. With `--prune`, removes stale local symlinks and uninstalls previously managed external entries.
+5. Shallow-merges `pi_settings.json` onto `~/.pi/agent/settings.json` (our keys win, runtime keys preserved — see "Pi settings" below).
+6. Symlinks `mcp.json` to `~/.config/mcp/mcp.json` and `~/.pi/agent/mcp.json`.
+7. Runs `scripts/configure-pi-tool-binaries.sh` to configure Pi tool binaries.
+8. Installs Playwright MCP (patched): persistently installs `@playwright/mcp` into `~/.local/playwright-mcp` and patches `crBrowser.js` to skip `Browser.setDownloadBehavior` so Brave's CDP connection works. Also symlinks the `brave-cdp-mcp` launcher (from `scripts/brave-cdp/`) next to that install. (The `playwright` server in `mcp.json` runs that launcher — see "Per-agent isolated Brave" below.)
+9. Reads `external_extensions.txt` (+ `external_extensions_mac.txt` on macOS) and runs `pi install <source>`.
+10. Reads `external_skills.txt` and runs `npx -y skills add <source> -g -y`.
+11. With `--prune`, removes stale local symlinks and uninstalls previously managed external entries.
 
 After running install, reload Pi with `/reload` if it's running.
 
@@ -268,6 +270,33 @@ vercel-labs/agent-skills@vercel-react-best-practices
 ```
 
 Then run `./install.sh`.
+
+## Pi settings
+
+`pi_settings.json` holds our declarative Pi settings (default provider/model,
+thinking level, enabled models, the session model-scope list). `install-pi.sh`
+**shallow-merges** it onto the live `~/.pi/agent/settings.json` with
+`jq -s '.[0] * .[1]'` (existing `*` ours): our declared keys overwrite, but any
+key we don't declare is left untouched.
+
+Why merge instead of symlink or copy: Pi *mutates* `settings.json` at runtime —
+it owns `packages` (the installed-extension list), `lastChangelogVersion`, and
+similar. A symlink would push that runtime churn back into this repo on every
+launch; a wholesale copy would wipe it. The overlay keeps this file a clean,
+minimal statement of desired settings while letting Pi manage its own state.
+
+Two keys are deliberately **not** declared here:
+
+- **`packages`** — the installed-extension list is owned by
+  `external_extensions.txt` (+ the mac variant), applied via `pi install` in the
+  step above. Declaring it here too would recreate a split-brain. (This split
+  used to live across repos: myrig's `home/.pi/agent/settings.json.jinja` once
+  hardcoded `packages`, re-seeding entries — e.g. `pi-slopchop` — that myagent
+  had dropped. That template has been removed; myagent is now the sole owner.)
+- **`shellPath`** — Pi auto-detects the shell; a static value would break termux
+  (whose zsh lives under `/data/data/com.termux/...`).
+
+To add a package, edit `external_extensions.txt` — not this file.
 
 ## MCP servers
 

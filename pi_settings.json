@@ -1,0 +1,19 @@
+{
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.5",
+  "defaultThinkingLevel": "high",
+  "enabledModels": [
+    "deepseek/deepseek-v4-pro",
+    "openai-codex/gpt-5.3-codex"
+  ],
+  "sessionModelScopeIds": [
+    "anthropic/claude-opus-4-7",
+    "anthropic/claude-sonnet-4-6",
+    "deepseek/deepseek-v4-pro",
+    "google/gemini-3.1-pro-preview",
+    "moonshotai/kimi-k2.6",
+    "openai-codex/gpt-5.3-codex",
+    "openai-codex/gpt-5.5",
+    "openrouter/qwen/qwen3.6-max-preview"
+  ]
+}

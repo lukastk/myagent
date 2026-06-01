@@ -8,6 +8,8 @@ EXTENSIONS_LIST="$REPO_ROOT/external_extensions.txt"
 EXTENSIONS_MAC_LIST="$REPO_ROOT/external_extensions_mac.txt"
 SKILLS_DIR="$HOME/.agents/skills"
 SKILLS_LIST="$REPO_ROOT/external_skills.txt"
+PI_SETTINGS_SRC="$REPO_ROOT/pi_settings.json"
+PI_SETTINGS_DEST="$HOME/.pi/agent/settings.json"
 MCP_CONFIG="$REPO_ROOT/mcp.json"
 MCP_DEST_DIR="$HOME/.config/mcp"
 MCP_DEST="$MCP_DEST_DIR/mcp.json"
@@ -280,6 +282,40 @@ else
             (cd "$skill_dir" && npm install --omit=dev)
         fi
     done
+fi
+
+echo ""
+echo "==> Merging Pi settings"
+
+# pi_settings.json holds our declarative Pi settings (default model/provider,
+# enabled models, model-scope list). It is SHALLOW-MERGED on top of the live
+# ~/.pi/agent/settings.json: our keys overwrite, but any keys we don't declare
+# are preserved. This matters because Pi mutates settings.json at runtime —
+# `packages` (the installed-extension list, owned here by external_extensions.txt
+# via `pi install`), `lastChangelogVersion`, etc. A symlink or wholesale copy
+# would clobber that runtime state, so we deliberately overlay instead.
+#
+# We intentionally do NOT declare `packages` (external_extensions.txt is the
+# single source of truth — those are installed by the `pi install` loop below)
+# or `shellPath` (Pi auto-detects; a static value would break termux).
+if [ -f "$PI_SETTINGS_SRC" ]; then
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "    jq is required to merge Pi settings."
+        exit 1
+    fi
+    mkdir -p "$(dirname "$PI_SETTINGS_DEST")"
+    new_tmp_file tmp_merged_settings
+    if [ -f "$PI_SETTINGS_DEST" ]; then
+        # existing * ours → ours wins on conflicts, existing keys preserved
+        jq -s '.[0] * .[1]' "$PI_SETTINGS_DEST" "$PI_SETTINGS_SRC" > "$tmp_merged_settings"
+        echo "    settings.json (merged onto existing)"
+    else
+        cp "$PI_SETTINGS_SRC" "$tmp_merged_settings"
+        echo "    settings.json (created)"
+    fi
+    mv "$tmp_merged_settings" "$PI_SETTINGS_DEST"
+else
+    echo "    No pi_settings.json found, skipping."
 fi
 
 echo ""

@@ -381,6 +381,20 @@ else
     echo "    WARNING: crBrowser.js not found at expected path"
 fi
 
+# Symlink the per-agent isolated-Brave launcher next to the playwright install,
+# so mcp.json's playwright server (command: bash, args: [brave-cdp-mcp],
+# cwd: ~/.local/playwright-mcp) can find it. The wrapper gives each agent its
+# own logged-in Brave over CDP; see scripts/brave-cdp/brave-cdp-mcp.
+BRAVE_CDP_WRAPPER_SRC="$REPO_ROOT/scripts/brave-cdp/brave-cdp-mcp"
+BRAVE_CDP_WRAPPER_DEST="$PLAYWRIGHT_MCP_DIR/brave-cdp-mcp"
+if [ -f "$BRAVE_CDP_WRAPPER_SRC" ]; then
+    chmod +x "$BRAVE_CDP_WRAPPER_SRC"
+    ln -sfn "$BRAVE_CDP_WRAPPER_SRC" "$BRAVE_CDP_WRAPPER_DEST"
+    echo "    Linked brave-cdp-mcp launcher"
+else
+    echo "    WARNING: brave-cdp-mcp wrapper not found at $BRAVE_CDP_WRAPPER_SRC"
+fi
+
 echo ""
 echo "==> Installing external extensions"
 

@@ -15,7 +15,9 @@ myagent/
 ├── scripts/
 │   ├── install-pi.sh                  # Pi-side install (extensions, skills, mcp.json symlinks)
 │   ├── install-claude.sh              # Claude Code install (skill symlinks + `claude mcp add-json`)
-│   └── configure-pi-tool-binaries.sh
+│   ├── configure-pi-tool-binaries.sh
+│   └── brave-cdp/
+│       └── brave-cdp-mcp              # Per-agent isolated-Brave launcher for the playwright MCP server
 ├── extensions/             # Local extensions (each is a folder)
 │   └── <name>/
 │       ├── index.ts        # Extension entry point (default export)
@@ -38,7 +40,7 @@ Pass `--prune` to forward it to both. Pass `--pi-only` or `--claude-only` to ski
 4. Runs `npm install --omit=dev` for any skill that has a `package.json`.
 5. Symlinks `mcp.json` to `~/.config/mcp/mcp.json` and `~/.pi/agent/mcp.json`.
 6. Runs `scripts/configure-pi-tool-binaries.sh` to configure Pi tool binaries.
-7. Installs Playwright MCP (patched): persistently installs `@playwright/mcp` into `~/.local/playwright-mcp` and patches `crBrowser.js` to skip `Browser.setDownloadBehavior` so Brave's CDP connection works. (The `playwright` server in `mcp.json` points at this install.)
+7. Installs Playwright MCP (patched): persistently installs `@playwright/mcp` into `~/.local/playwright-mcp` and patches `crBrowser.js` to skip `Browser.setDownloadBehavior` so Brave's CDP connection works. Also symlinks the `brave-cdp-mcp` launcher (from `scripts/brave-cdp/`) next to that install. (The `playwright` server in `mcp.json` runs that launcher — see "Per-agent isolated Brave" below.)
 8. Reads `external_extensions.txt` (+ `external_extensions_mac.txt` on macOS) and runs `pi install <source>`.
 9. Reads `external_skills.txt` and runs `npx -y skills add <source> -g -y`.
 10. With `--prune`, removes stale local symlinks and uninstalls previously managed external entries.
@@ -273,7 +275,19 @@ MCP server definitions live in `mcp.json` at the repo root. This file is symlink
 
 The `pi-mcp-adapter` extension (listed in `external_extensions.txt`) reads this config and bridges MCP tools into Pi. Servers are lazy — they spawn on first tool use and auto-disconnect after idle timeout.
 
-The `playwright` server is special-cased: instead of an `npx`-spawned lazy server, it runs against the patched persistent install at `~/.local/playwright-mcp` (`command: node`, `args: ["node_modules/@playwright/mcp/cli.js", "--cdp-endpoint", "http://localhost:9222"]`) that `scripts/install-pi.sh` creates and patches for Brave's CDP. See the install-pi.sh step above.
+The `playwright` server is special-cased: instead of an `npx`-spawned lazy server, it runs the `brave-cdp-mcp` launcher in the patched persistent install at `~/.local/playwright-mcp` (`command: bash`, `args: ["brave-cdp-mcp"]`, `cwd: ~/.local/playwright-mcp`) that `scripts/install-pi.sh` creates, patches for Brave's CDP, and links the launcher into. See the "Per-agent isolated Brave" section below and the install-pi.sh step above.
+
+### Per-agent isolated Brave (`brave-cdp-mcp`)
+
+Source: `scripts/brave-cdp/brave-cdp-mcp`. Connecting Playwright MCP to one shared Brave over a single CDP endpoint makes every agent grab `browser.contexts()[0]` — the same default context and tab pool — so concurrent agents clobber each other's tabs. The launcher fixes this by giving **each agent session its own Brave**:
+
+- **Default (isolated).** The launcher's `$PPID` *is* the agent process (the MCP server is spawned as a direct child of `pi`/`claude` — verified). It allocates a debug port from a locked registry pool (`9223–9422`, registry at `~/.local/brave-cdp/registry`), seeds a profile at `/tmp/brave-cdp/<port>` (copies the real Brave profile's login state — cookies/Local State/etc. — and **symlinks** the heavy read-only `Extensions/` dir, ~155M), launches Brave on that port, then `exec`s the real `cli.js` against it. The seeded profile means the isolated Brave is **logged in as you** (cookies decrypt via the shared macOS "Brave Safe Storage" keychain key).
+- **Teardown (watchdog).** When it launches a browser it also spawns a detached, `nohup`'d watchdog that polls the agent PID and, on agent death (clean exit, crash, kill — tmux or not), kills *that specific* Brave PID (verified to still be ours, guarding PID reuse), removes the `/tmp` profile, and frees the registry slot. `/tmp`'s 3-day rule and reboot are backstops.
+- **Reuse.** On lazy MCP re-spawn within one agent, the registry returns the same port and the launcher reconnects to the existing Brave (no second browser, no second watchdog).
+- **Opt-out.** `BRAVE_CDP_REAL=1` (or `BRAVE_CDP_PORT=9222`) → connect to your real interactive Brave on `:9222` instead. `BRAVE_CDP_PORT=<n>` → connect to an explicit already-running port. Non-macOS → connect-only to `:9222` (preserves prior behavior, e.g. termux).
+- **Tunables (mainly for tests):** `BRAVE_CDP_WATCH_INTERVAL` (watchdog poll secs, default 30), `BRAVE_CDP_WD_DEBUG` (path for watchdog lifecycle log), `BRAVE_CDP_CLI`/`BRAVE_CDP_RUNNER` (substitute the cli path / runtime).
+
+Related follow-up lives in **myrig**: the `brave-mcp` shell function (`home/.myrig/zshenv/coding.sh`) still launches your interactive `:9222` Brave, and the global browser-usage note is in `home/.pi/agent/AGENTS.md`.
 
 ### Adding an MCP server
 

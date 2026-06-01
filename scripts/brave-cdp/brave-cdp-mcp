@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+#
+# brave-cdp-mcp — launcher/wrapper for the Playwright MCP server that gives each
+# coding-agent session its OWN isolated, logged-in Brave instance over CDP.
+#
+# Why this exists
+# ---------------
+# Connecting Playwright MCP to a single shared Brave over one CDP endpoint makes
+# every agent grab `browser.contexts()[0]` — the same default context, the same
+# tab pool — so concurrent agents clobber each other's tabs. This wrapper gives
+# each agent its own Brave on its own debug port, seeded from a copy of the real
+# profile (so it's logged in), and reaps it when the agent process dies.
+#
+# Lifecycle anchor
+# ----------------
+# The MCP server is spawned as a direct child of the agent process (verified for
+# both `claude` and `pi`), so $PPID *is* the agent PID. A detached watchdog
+# tracks that PID and tears the browser down when the agent exits — works in or
+# out of tmux, on clean exit or crash. /tmp's 3-day rule and reboot are backstops.
+#
+# Modes
+# -----
+#   default (macOS)            → isolated, seeded Brave on an allocated port
+#   BRAVE_CDP_REAL=1           → connect to your real interactive Brave (9222)
+#   BRAVE_CDP_PORT=<port>      → connect to an explicit, already-running port
+#   non-macOS                  → connect-only to BRAVE_CDP_PORT or 9222
+#
+# Note: do NOT use `set -e` here — an MCP server must never crash on a benign
+# failure (a missing cp source, a grep miss). We guard the one thing that must
+# work (the final exec) and degrade to the real browser otherwise.
+
+PW_DIR="$HOME/.local/playwright-mcp"
+CLI="${BRAVE_CDP_CLI:-$PW_DIR/node_modules/@playwright/mcp/cli.js}"
+STATE_DIR="$HOME/.local/brave-cdp"
+REGISTRY="$STATE_DIR/registry"          # lines: "<port> <agent_pid> <profile_dir>"
+LOCKDIR="$STATE_DIR/registry.lock"      # mkdir-based lock (macOS has no flock(1))
+PROFILES_ROOT="/tmp/brave-cdp"          # /tmp so the OS reaps stale profiles
+PORT_LO=9223
+PORT_HI=9422
+REAL_PORT=9222
+BRAVE_BIN="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+BASE_PROFILE="$HOME/Library/Application Support/BraveSoftware/Brave-Browser"
+
+mkdir -p "$STATE_DIR" "$PROFILES_ROOT" 2>/dev/null
+
+log() { echo "[brave-cdp-mcp] $*" >&2; }
+
+# Hand off stdio to the real Playwright MCP server. Replaces this process so the
+# server speaks the MCP protocol directly to the agent over our inherited pipes.
+# BRAVE_CDP_RUNNER lets tests substitute the runtime (defaults to `node`).
+exec_cli() {  # $1 = port; remaining args forwarded to the cli
+  local port="$1"; shift
+  exec ${BRAVE_CDP_RUNNER:-node} "$CLI" --cdp-endpoint "http://localhost:$port" "$@"
+}
+
+cdp_alive() {  # $1 = port — is a CDP browser answering on this port?
+  curl -sf -m 2 "http://localhost:$1/json/version" >/dev/null 2>&1
+}
+
+lock()   { local n=0; until mkdir "$LOCKDIR" 2>/dev/null; do sleep 0.05; n=$((n+1)); [ "$n" -gt 200 ] && { rmdir "$LOCKDIR" 2>/dev/null; }; done; }
+unlock() { rmdir "$LOCKDIR" 2>/dev/null || true; }
+
+# ---------------------------------------------------------------------------
+# Connect-only modes (no seeding, no watchdog)
+# ---------------------------------------------------------------------------
+if [ "$(uname -s)" != "Darwin" ] || [ "${BRAVE_CDP_REAL:-}" = "1" ]; then
+  exec_cli "${BRAVE_CDP_PORT:-$REAL_PORT}" "$@"
+fi
+if [ -n "${BRAVE_CDP_PORT:-}" ]; then
+  exec_cli "$BRAVE_CDP_PORT" "$@"
+fi
+
+# ---------------------------------------------------------------------------
+# Isolated mode (default on macOS)
+# ---------------------------------------------------------------------------
+
+# The MCP server is spawned as a direct child of the agent process (verified for
+# both `claude` and `pi`; any `sh -c "… && exec …"` cwd-wrapper is exec-collapsed
+# so it doesn't show up as a parent). So our $PPID *is* the agent PID — the
+# process whose death should tear down this browser.
+AGENT_PID="$PPID"
+
+# --- seed a logged-in profile copy (cheap: ~155M; copies mutable login state,
+#     symlinks the heavy read-only Extensions code) -------------------------
+seed_profile() {  # $1 = profile dir
+  local dest="$1" f d
+  [ -d "$dest/Default" ] && return 0
+  mkdir -p "$dest/Default" || return 1
+  cp "$BASE_PROFILE/Local State" "$dest/" 2>/dev/null
+  for f in "Cookies" "Cookies-journal" "Login Data" "Login Data-journal" \
+           "Web Data" "Preferences" "Secure Preferences"; do
+    cp "$BASE_PROFILE/Default/$f" "$dest/Default/" 2>/dev/null
+  done
+  for d in "Network" "Local Storage" "Local Extension Settings" \
+           "IndexedDB" "Extension State" "Sync Extension Settings"; do
+    [ -d "$BASE_PROFILE/Default/$d" ] && cp -R "$BASE_PROFILE/Default/$d" "$dest/Default/" 2>/dev/null
+  done
+  # Symlink (don't copy) the extension code: it's large and read-only at runtime.
+  ln -s "$BASE_PROFILE/Default/Extensions" "$dest/Default/Extensions" 2>/dev/null
+}
+
+launch_brave() {  # $1 = port, $2 = profile dir ; sets global BRAVE_PID
+  "$BRAVE_BIN" --remote-debugging-port="$1" --user-data-dir="$2" \
+    --no-first-run --no-default-browser-check about:blank \
+    >/dev/null 2>&1 &
+  BRAVE_PID=$!
+  disown 2>/dev/null || true
+}
+
+wait_cdp() {  # $1 = port
+  local i
+  for i in $(seq 1 60); do cdp_alive "$1" && return 0; sleep 0.25; done
+  return 1
+}
+
+# Detached watchdog: when the agent PID dies (any cause), tear down ITS browser.
+# Keyed on the specific Brave PID (verified to still be our browser, guarding
+# against PID reuse) rather than a profile-path pkill — so a stale watchdog can
+# never kill a different agent that reused the same port/profile path. nohup so
+# it survives MCP-server churn (lazy disconnect/re-spawn).
+spawn_watchdog() {  # $1 = agent_pid, $2 = port, $3 = profile dir, $4 = brave_pid
+  nohup bash -c '
+    apid="$1"; port="$2"; prof="$3"; bpid="$4"; reg="$5"; lockd="$6"; iv="$7"
+    echo "[wd] start apid=$apid port=$port bpid=$bpid iv=$iv $(date +%s)" >> "${BRAVE_CDP_WD_DEBUG:-/dev/null}"
+    while kill -0 "$apid" 2>/dev/null; do sleep "$iv"; done
+    echo "[wd] agent $apid gone, reaping port $port (brave $bpid) $(date +%s)" >> "${BRAVE_CDP_WD_DEBUG:-/dev/null}"
+    # Only kill if $bpid is still OUR Brave (its argv carries our unique profile).
+    if ps -o command= -p "$bpid" 2>/dev/null | grep -q -- "--user-data-dir=$prof"; then
+      kill "$bpid" 2>/dev/null
+      i=0; while [ "$i" -lt 10 ] && kill -0 "$bpid" 2>/dev/null; do sleep 0.5; i=$((i+1)); done
+      kill -9 "$bpid" 2>/dev/null
+    fi
+    # Drop the profile BEFORE freeing the slot, so the port cannot be reused
+    # (and its profile recreated) until our teardown is fully done.
+    rm -rf "$prof"
+    n=0; until mkdir "$lockd" 2>/dev/null; do sleep 0.05; n=$((n+1)); [ "$n" -gt 200 ] && break; done
+    if [ -f "$reg" ]; then grep -v -- "^$port $apid " "$reg" > "$reg.tmp" 2>/dev/null; mv "$reg.tmp" "$reg" 2>/dev/null; fi
+    rmdir "$lockd" 2>/dev/null
+  ' brave-cdp-watchdog "$1" "$2" "$3" "$4" "$REGISTRY" "$LOCKDIR" "${BRAVE_CDP_WATCH_INTERVAL:-30}" >/dev/null 2>&1 &
+  disown 2>/dev/null || true
+}
+
+# --- allocate (or reuse) a port for this agent ----------------------------
+PORT=""
+lock
+# Reuse a port already assigned to this agent (covers lazy MCP re-spawns).
+if [ -f "$REGISTRY" ]; then
+  PORT="$(awk -v a="$AGENT_PID" '$2==a {print $1; exit}' "$REGISTRY")"
+fi
+if [ -z "$PORT" ]; then
+  used=" $( [ -f "$REGISTRY" ] && awk '{print $1}' "$REGISTRY" | tr '\n' ' ') "
+  p="$PORT_LO"
+  while [ "$p" -le "$PORT_HI" ]; do
+    case "$used" in *" $p "*) p=$((p+1)); continue;; esac
+    if ! cdp_alive "$p" && ! lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1; then
+      PORT="$p"
+      printf '%s %s %s\n' "$PORT" "$AGENT_PID" "$PROFILES_ROOT/$PORT" >> "$REGISTRY"
+      break
+    fi
+    p=$((p+1))
+  done
+fi
+unlock
+
+# Pool exhausted → degrade to the real browser rather than fail.
+if [ -z "$PORT" ]; then
+  log "no free port in $PORT_LO-$PORT_HI; falling back to real Brave :$REAL_PORT"
+  exec_cli "$REAL_PORT" "$@"
+fi
+
+PROFILE="$PROFILES_ROOT/$PORT"
+
+# --- ensure a Brave is alive on this port ---------------------------------
+if ! cdp_alive "$PORT"; then
+  if [ ! -x "$BRAVE_BIN" ]; then
+    log "Brave not found at '$BRAVE_BIN'; falling back to real Brave :$REAL_PORT"
+    exec_cli "$REAL_PORT" "$@"
+  fi
+  seed_profile "$PROFILE"
+  launch_brave "$PORT" "$PROFILE"
+  if ! wait_cdp "$PORT"; then
+    log "Brave on :$PORT did not come up; falling back to real Brave :$REAL_PORT"
+    exec_cli "$REAL_PORT" "$@"
+  fi
+  # Only arm the watchdog when WE launched the browser (one per agent-browser).
+  spawn_watchdog "$AGENT_PID" "$PORT" "$PROFILE" "$BRAVE_PID"
+  log "isolated Brave ready on :$PORT (profile $PROFILE, agent pid $AGENT_PID, brave pid $BRAVE_PID)"
+fi
+
+exec_cli "$PORT" "$@"

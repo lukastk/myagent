@@ -4,7 +4,8 @@
       "command": "bash",
       "args": ["brave-cdp-mcp"],
       "cwd": "~/.local/playwright-mcp",
-      "lifecycle": "lazy"
+      "lifecycle": "lazy",
+      "directTools": true
     },
     "svelte": {
       "command": "npx",

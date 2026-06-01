@@ -1,3 +1,4 @@
 node_modules/
 .install-state/
 AGENTS.local.md
+.playwright-mcp/

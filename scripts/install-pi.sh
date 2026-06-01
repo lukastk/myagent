@@ -304,7 +304,12 @@ if [ -f "$MCP_CONFIG" ]; then
         ln -s "$MCP_CONFIG" "$MCP_DEST"
     fi
 
-    # Also symlink to Pi-specific location
+    # Also symlink to Pi-specific location. This is the config pi-mcp-adapter
+    # actually reads, so a stale REGULAR file here silently shadows the repo
+    # config (it bit us once — an old hand-written mcp.json kept Pi on a
+    # non-wrapped playwright server). Unlike ~/.config/mcp (left untouched if a
+    # user put a real file there), adopt this path: back up a non-symlink and
+    # replace it with the symlink so the repo config always wins for Pi.
     mkdir -p "$MCP_PI_DEST_DIR"
     if [ -L "$MCP_PI_DEST" ]; then
         existing="$(readlink "$MCP_PI_DEST")"
@@ -312,7 +317,12 @@ if [ -f "$MCP_CONFIG" ]; then
             rm "$MCP_PI_DEST"
             ln -s "$MCP_CONFIG" "$MCP_PI_DEST"
         fi
-    elif [ ! -e "$MCP_PI_DEST" ]; then
+    else
+        if [ -e "$MCP_PI_DEST" ]; then
+            backup="$MCP_PI_DEST.stale-$(date +%s).bak"
+            echo "    $MCP_PI_DEST is a non-symlink — backing up to $backup and adopting"
+            mv "$MCP_PI_DEST" "$backup"
+        fi
         echo "    mcp.json -> $MCP_PI_DEST"
         ln -s "$MCP_CONFIG" "$MCP_PI_DEST"
     fi

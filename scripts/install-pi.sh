@@ -456,10 +456,37 @@ else
     echo "    WARNING: crBrowser.js not found at expected path"
 fi
 
+# PATCH 2: Drop --use-mock-keychain / --password-store=basic from the default
+# Chromium launch switches. brave-cdp-mcp's default isolated mode has Playwright
+# LAUNCH Brave itself (lazily, on first browser tool call); those two switches
+# force a mock keychain, so the launched Brave can't decrypt the seeded profile's
+# cookies and lands logged-out. Removing them lets Brave use the real macOS
+# "Brave Safe Storage" keychain key (already granted to the Brave app, so no
+# prompt) → the isolated browser is logged in. Only affects launch mode;
+# CDP-connect mode (real Brave / BRAVE_CDP_REAL opt-out) never launches a browser.
+PLAYWRIGHT_SWITCHES_TARGET="$PLAYWRIGHT_MCP_DIR/node_modules/playwright-core/lib/server/chromium/chromiumSwitches.js"
+if [ -f "$PLAYWRIGHT_SWITCHES_TARGET" ]; then
+    if grep -q '"--use-mock-keychain"' "$PLAYWRIGHT_SWITCHES_TARGET"; then
+        echo "    Patching chromiumSwitches.js (drop mock-keychain for Brave launch mode)..."
+        cp "$PLAYWRIGHT_SWITCHES_TARGET" "$PLAYWRIGHT_SWITCHES_TARGET.bak"
+        sed -i '' '/^  "--password-store=basic",$/d; /^  "--use-mock-keychain",$/d' "$PLAYWRIGHT_SWITCHES_TARGET"
+        if grep -q '"--use-mock-keychain"' "$PLAYWRIGHT_SWITCHES_TARGET"; then
+            echo "    WARNING: chromiumSwitches.js patch failed — restoring backup"
+            mv "$PLAYWRIGHT_SWITCHES_TARGET.bak" "$PLAYWRIGHT_SWITCHES_TARGET"
+        else
+            echo "    Patch applied successfully"
+        fi
+    else
+        echo "    chromiumSwitches.js patch (already applied)"
+    fi
+else
+    echo "    WARNING: chromiumSwitches.js not found at expected path"
+fi
+
 # Symlink the per-agent isolated-Brave launcher next to the playwright install,
 # so mcp.json's playwright server (command: bash, args: [brave-cdp-mcp],
 # cwd: ~/.local/playwright-mcp) can find it. The wrapper gives each agent its
-# own logged-in Brave over CDP; see scripts/brave-cdp/brave-cdp-mcp.
+# own logged-in Brave; see scripts/brave-cdp/brave-cdp-mcp.
 BRAVE_CDP_WRAPPER_SRC="$REPO_ROOT/scripts/brave-cdp/brave-cdp-mcp"
 BRAVE_CDP_WRAPPER_DEST="$PLAYWRIGHT_MCP_DIR/brave-cdp-mcp"
 if [ -f "$BRAVE_CDP_WRAPPER_SRC" ]; then

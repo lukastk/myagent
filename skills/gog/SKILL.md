@@ -39,6 +39,68 @@ gog --account lukas.kikuchi@gmail.com drive ls --parent <folderId>
 gog --account lukas.kikuchi@gmail.com drive get <fileId>
 ```
 
+## Known folder IDs
+
+These are folders Lukas has pointed to in past sessions. Use these
+when you need to put something "in the Autonomy Data Unit folder" or
+"in the projects folder" — they aren't easily discoverable via
+`drive search` because that does full-text search rather than name
+matching, and Drive's natural-language search is unreliable for folder
+titles.
+
+| Folder | ID | Account |
+|---|---|---|
+| Autonomy Data Unit (root) | `165hMDiXLKSDU10KB2jiA2Fa5_QDtPcfu` | `kikuchi.lukas@gmail.com` |
+| Autonomy Data Unit → projects | `1kb2EJH0WvhK-tf5YycsOZqbAa544Qn4c` | `kikuchi.lukas@gmail.com` |
+
+If Lukas mentions a new persistent folder ("the X folder"), add it here.
+
+## Uploading markdown as a native Google Doc
+
+`gog drive upload <file.md>` uploads as raw `text/markdown` — it does NOT
+convert to a Google Doc. To get a real Doc from a `.md` file you need
+the Drive API with `mimeType: application/vnd.google-apps.document` set
+on the metadata; Drive then runs its markdown importer. The pattern,
+reusing gog's stored refresh token:
+
+```python
+import io, json, subprocess
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+
+# Export gog's cached refresh token to a temp file
+subprocess.run(["gog", "auth", "tokens", "export", "<email>",
+                "--out", "/tmp/_t.json", "--overwrite"], check=True)
+cache = json.load(open("/tmp/_t.json"))
+client = json.load(open(
+    "/Users/lukas/Library/Application Support/gogcli/credentials.json"))
+creds = Credentials(
+    token=None, refresh_token=cache["refresh_token"],
+    token_uri="https://oauth2.googleapis.com/token",
+    client_id=client["client_id"], client_secret=client["client_secret"],
+    scopes=cache.get("scopes"),
+)
+creds.refresh(Request())
+svc = build("drive", "v3", credentials=creds, cache_discovery=False)
+
+media = MediaIoBaseUpload(io.BytesIO(open("foo.md","rb").read()),
+                          mimetype="text/markdown")
+f = svc.files().create(
+    body={"name": "Foo", "mimeType": "application/vnd.google-apps.document",
+          "parents": ["<folderId>"]},
+    media_body=media, fields="id,webViewLink",
+).execute()
+```
+
+Important gotchas the Drive markdown importer hits:
+- Image embeds `![alt](path.png)` crash the converter (500 error).
+  Strip them or rewrite as plain links before uploading.
+- Use `files().update(media_body=...)` to re-import a new markdown body
+  into an existing Doc — preserves the doc ID and any sharing.
+- The 500 errors are sometimes transient; retry with exponential backoff.
+
 ### Docs and Sheets
 
 ```bash

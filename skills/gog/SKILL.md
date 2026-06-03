@@ -10,6 +10,8 @@ description: Use the `gog` CLI to interact with Google services — Gmail, Calen
 | `lukas.kikuchi@gmail.com` | Personal | `default` |
 | `kikuchi.lukas@gmail.com` | Work | `default` |
 
+The work account `kikuchi.lukas@gmail.com` is the Gmail inbox linked to the user's work identity `lukas@autonomy.work` — use it for anything work-related, including mail addressed to `lukas@autonomy.work`.
+
 Both accounts use the default OAuth client. Tokens are already authorized and stored on all machines.
 
 **Authorized services:** `gmail`, `calendar`, `drive`, `docs`, `sheets`. The CLI also exposes `chat`, `contacts`, `tasks`, `people`, `slides`, `classroom`, `groups`, and `keep`, but those scopes are **not** authorized — calling them fails until you re-auth with a wider `--services` list (see "Re-authenticating").

@@ -6,7 +6,7 @@ Personal Pi coding agent extensions, skills, and configuration.
 
 ```
 myagent/
-├── AGENTS.md               # This file (also symlinked as CLAUDE.md)
+├── AGENTS.md               # This file (CLAUDE.md is a stub that imports it via `@AGENTS.md`)
 ├── install.sh              # Orchestrator — runs scripts/install-pi.sh && scripts/install-claude.sh
 ├── external_extensions.txt     # External extensions to install via `pi install`
 ├── external_extensions_mac.txt # macOS-only external extensions
@@ -309,6 +309,8 @@ own `/bin/bash` fallback rather than getting a broken path).
 MCP server definitions live in `mcp.json` at the repo root. This file is symlinked to `~/.config/mcp/mcp.json` by `install.sh`, making it the global MCP config.
 
 The `pi-mcp-adapter` extension (listed in `external_extensions.txt`) reads this config and bridges MCP tools into Pi. Servers are lazy — they spawn on first tool use and auto-disconnect after idle timeout.
+
+A server entry may set `"directTools": true` (e.g. the `playwright` server does) to promote that server's tools to **direct Pi tools** rather than routing them through the on-demand discovery proxy — they show up as first-class tools without a `/mcp` promote step. This field is Pi-specific: `scripts/install-claude.sh` builds the Claude payload from a whitelist (`command`/`args`/`cwd`/`env`), so `directTools` is naturally dropped for Claude Code.
 
 The `playwright` server is special-cased: instead of an `npx`-spawned server, it runs the `brave-cdp-mcp` launcher in the patched persistent install at `~/.local/playwright-mcp` (`command: bash`, `args: ["brave-cdp-mcp"]`, `cwd: ~/.local/playwright-mcp`) that `scripts/install-pi.sh` creates, patches, and links the launcher into. See the "Per-agent isolated Brave" section below and the install-pi.sh step above.
 

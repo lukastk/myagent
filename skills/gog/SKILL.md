@@ -12,32 +12,63 @@ description: Use the `gog` CLI to interact with Google services — Gmail, Calen
 
 Both accounts use the default OAuth client. Tokens are already authorized and stored on all machines.
 
+**Authorized services:** `gmail`, `calendar`, `drive`, `docs`, `sheets`. The CLI also exposes `chat`, `contacts`, `tasks`, `people`, `slides`, `classroom`, `groups`, and `keep`, but those scopes are **not** authorized — calling them fails until you re-auth with a wider `--services` list (see "Re-authenticating").
+
 ## Common commands
 
-Use `--account <email>` to target a specific account. Use `--json` for structured output, `--plain` for stable TSV.
+`--account <email>` is **required** — there is no default account, so omitting it errors with `missing --account`. (`GOG_ACCOUNT` or `gog auth manage` can set a default, but the convention here is to pass `--account` explicitly.)
+
+Use `--json` for structured output, `--plain` for stable TSV. Most list commands take `--max N`. Destructive writes (delete, etc.) prompt unless you pass `--force`; in scripts add `--no-input` to fail instead of hang.
+
+**Finding IDs:** message / file / doc / sheet IDs come from Google URLs, or from `gmail search` / `drive search`.
 
 ### Gmail
 
 ```bash
-gog --account lukas.kikuchi@gmail.com gmail search 'query' --max N
+# Read
+gog --account lukas.kikuchi@gmail.com gmail search 'in:inbox' --max 10   # Gmail query syntax
 gog --account lukas.kikuchi@gmail.com gmail get <messageId> --format full
-gog --account lukas.kikuchi@gmail.com gmail search 'in:inbox' --max 10
+gog --account lukas.kikuchi@gmail.com gmail attachment <messageId> <attachmentId> --out ./file
+# Write
+gog --account lukas.kikuchi@gmail.com gmail send --to a@b.com --subject "Hi" --body "..."
+gog --account lukas.kikuchi@gmail.com gmail drafts create --to a@b.com --subject "Hi" --body "..."
 ```
 
 ### Calendar
 
 ```bash
-gog --account lukas.kikuchi@gmail.com calendar events --today
+gog --account lukas.kikuchi@gmail.com calendar events --today          # also --tomorrow, --all
 gog --account lukas.kikuchi@gmail.com calendar events --from 2026-05-14 --to 2026-05-21
 gog --account lukas.kikuchi@gmail.com calendar create primary --summary "Meeting" --from "2026-05-14T10:00:00+01:00" --to "2026-05-14T10:30:00+01:00"
+gog --account lukas.kikuchi@gmail.com calendar update primary <eventId> --summary "Renamed"
+gog --account lukas.kikuchi@gmail.com calendar delete primary <eventId>
+gog --account lukas.kikuchi@gmail.com calendar freebusy primary --from 2026-06-03 --to 2026-06-04
 ```
 
 ### Drive
 
 ```bash
-gog --account lukas.kikuchi@gmail.com drive ls --parent <folderId>
-gog --account lukas.kikuchi@gmail.com drive get <fileId>
+gog --account lukas.kikuchi@gmail.com drive ls --parent <folderId>      # default: root
+gog --account lukas.kikuchi@gmail.com drive search 'query'              # full-text, not filename
+gog --account lukas.kikuchi@gmail.com drive get <fileId>                # METADATA only — not content
+gog --account lukas.kikuchi@gmail.com drive download <fileId> --out ./f # file CONTENT (exports Google formats)
+gog --account lukas.kikuchi@gmail.com drive upload <localPath> --parent <folderId>
+gog --account lukas.kikuchi@gmail.com drive mkdir <name> --parent <folderId>
 ```
+
+To read the *content* of a native Google file, use `docs cat` / `sheets get` (below), not `drive get`.
+
+### Docs and Sheets
+
+```bash
+gog --account lukas.kikuchi@gmail.com docs cat <docId>                       # plain text
+gog --account lukas.kikuchi@gmail.com docs export <docId> --format pdf --out ./d.pdf
+gog --account lukas.kikuchi@gmail.com sheets get <spreadsheetId> '<range>'
+gog --account lukas.kikuchi@gmail.com sheets update <spreadsheetId> '<range>' val1 val2 ...
+gog --account lukas.kikuchi@gmail.com sheets append <spreadsheetId> '<range>' val1 val2 ...
+```
+
+To create a native Google Doc from a `.md` file, see "Uploading markdown as a native Google Doc" below (`drive upload` does **not** convert).
 
 ## Known folder IDs
 
@@ -100,13 +131,6 @@ Important gotchas the Drive markdown importer hits:
 - Use `files().update(media_body=...)` to re-import a new markdown body
   into an existing Doc — preserves the doc ID and any sharing.
 - The 500 errors are sometimes transient; retry with exponential backoff.
-
-### Docs and Sheets
-
-```bash
-gog --account lukas.kikuchi@gmail.com docs cat <docId>
-gog --account lukas.kikuchi@gmail.com sheets get <spreadsheetId> '<range>'
-```
 
 ## Environment
 

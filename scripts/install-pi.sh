@@ -16,7 +16,11 @@ MCP_DEST="$MCP_DEST_DIR/mcp.json"
 MCP_PI_DEST_DIR="$HOME/.pi/agent"
 MCP_PI_DEST="$MCP_PI_DEST_DIR/mcp.json"
 STATE_DIR="$REPO_ROOT/.install-state"
-EXT_STATE_FILE="$STATE_DIR/external_extensions.txt"
+# External extensions are pruned by reconciling `pi list` (reality) against the
+# declared lists — no state file. A state file of "what we installed" structurally
+# can't see orphans installed by other tooling, which is how pi-slopchop survived a
+# prior prune. Skills still use a state file (see SKILL_STATE_FILE).
+LEGACY_EXT_STATE_FILE="$STATE_DIR/external_extensions.txt"
 SKILL_STATE_FILE="$STATE_DIR/external_skills.txt"
 PI_TOOL_BINARIES_SCRIPT="$SCRIPT_DIR/configure-pi-tool-binaries.sh"
 
@@ -507,7 +511,6 @@ else
         [ -z "$line" ] && continue
         echo "    $line"
         pi install "$line"
-        ensure_state_line "$EXT_STATE_FILE" "$line"
     done 3< "$tmp_external_extensions"
 fi
 
@@ -520,7 +523,6 @@ if [ "$(uname -s)" = "Darwin" ]; then
             [ -z "$line" ] && continue
             echo "    $line (macOS)"
             pi install "$line"
-            ensure_state_line "$EXT_STATE_FILE" "$line"
         done 3< "$tmp_mac_extensions"
     else
         echo "    No macOS extension entries found, skipping."
@@ -557,38 +559,39 @@ if [ "$PRUNE" = true ]; then
     prune_local_symlinks "$SKILLS_DIR" "$REPO_ROOT/skills" "$tmp_local_skill_names" "skill"
 
     echo ""
-    echo "==> Pruning external extensions"
-    if [ -f "$EXT_STATE_FILE" ]; then
-        new_tmp_file installed_extension_sources
-        pi list | sed -n 's/^  \([^[:space:]].*\)$/\1/p' > "$installed_extension_sources"
+    echo "==> Pruning external extensions (reconcile to external_extensions.txt)"
+    # Reconcile installed-vs-declared: iterate the extensions Pi actually has
+    # (`pi list`) and remove any not in the declared desired set
+    # ($tmp_effective_external_extensions = external_extensions.txt, plus the mac
+    # list only on macOS). This removes ANY undeclared extension, including
+    # orphans myagent never installed itself — a state file of our own past
+    # installs couldn't see those (that's how pi-slopchop survived a prior prune).
+    new_tmp_file installed_extension_sources
+    pi list | sed -n 's/^  \([^[:space:]].*\)$/\1/p' > "$installed_extension_sources"
 
-        removed_any=false
-        while IFS= read -r source <&3 || [ -n "$source" ]; do
-            [ -z "$source" ] && continue
+    removed_any=false
+    while IFS= read -r source <&3 || [ -n "$source" ]; do
+        [ -z "$source" ] && continue
 
-            if file_contains_line "$tmp_effective_external_extensions" "$source"; then
-                continue
-            fi
-
-            removed_any=true
-            if file_contains_line "$installed_extension_sources" "$source"; then
-                echo "    removing $source"
-                if pi remove "$source"; then
-                    remove_state_line "$EXT_STATE_FILE" "$source"
-                else
-                    echo "      failed to remove $source; keeping it in state for retry"
-                fi
-            else
-                echo "    $source (already absent)"
-                remove_state_line "$EXT_STATE_FILE" "$source"
-            fi
-        done 3< "$EXT_STATE_FILE"
-
-        if [ "$removed_any" = false ]; then
-            echo "    No external extensions to prune"
+        if file_contains_line "$tmp_effective_external_extensions" "$source"; then
+            continue
         fi
-    else
-        echo "    No managed external extensions state found"
+
+        removed_any=true
+        echo "    removing $source (not declared in myagent)"
+        if ! pi remove "$source"; then
+            echo "      failed to remove $source"
+        fi
+    done 3< "$installed_extension_sources"
+
+    if [ "$removed_any" = false ]; then
+        echo "    Installed extensions already match myagent — nothing to prune"
+    fi
+
+    # Drop the legacy per-install state file: extension pruning no longer reads it.
+    if [ -f "$LEGACY_EXT_STATE_FILE" ]; then
+        rm -f "$LEGACY_EXT_STATE_FILE"
+        echo "    Removed legacy state file $LEGACY_EXT_STATE_FILE (no longer used)"
     fi
 
     echo ""

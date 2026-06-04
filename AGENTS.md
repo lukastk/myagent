@@ -45,7 +45,9 @@ Pass `--prune` to forward it to both. Pass `--pi-only` or `--claude-only` to ski
 8. Installs Playwright MCP (patched): persistently installs `@playwright/mcp` into `~/.local/playwright-mcp` and applies two patches — `crBrowser.js` (skip `Browser.setDownloadBehavior`, for the CDP-connect/opt-out path) and `chromiumSwitches.js` (drop `--use-mock-keychain`/`--password-store=basic` so a Brave that Playwright *launches* can decrypt the seeded profile's cookies). Also symlinks the `brave-cdp-mcp` launcher (from `scripts/brave-cdp/`) next to that install. (The `playwright` server in `mcp.json` runs that launcher — see "Per-agent isolated Brave" below.)
 9. Reads `external_extensions.txt` (+ `external_extensions_mac.txt` on macOS) and runs `pi install <source>`.
 10. Reads `external_skills.txt` and runs `npx -y skills add <source> -g -y`.
-11. With `--prune`, removes stale local symlinks and uninstalls previously managed external entries.
+11. With `--prune`, removes stale local symlinks and reconciles installed extensions/skills against what's declared:
+    - **External extensions** are reconciled against the declared set (`external_extensions.txt`, plus `external_extensions_mac.txt` only on macOS): it iterates `pi list` (what Pi actually has) and `pi remove`s anything not declared — including orphans myagent never installed itself. This is *platform-strict*: a mac-only extension installed on Linux is removed there. There is intentionally no extension state file (a record of "what we installed" can't see orphans — that's how `pi-slopchop` survived a prior prune); the prune deletes the legacy `.install-state/external_extensions.txt` if present.
+    - **External skills** still use the `.install-state/external_skills.txt` record and only remove skills myagent previously installed (global skills are a shared namespace, so reconcile-to-declared would be too aggressive).
 
 After running install, reload Pi with `/reload` if it's running.
 
@@ -292,7 +294,10 @@ split-brain. (This split used to live across repos: myrig's
 `home/.pi/agent/settings.json.jinja` once hardcoded `packages`, re-seeding
 entries — e.g. `pi-slopchop` — that myagent had dropped. That template has been
 removed; myagent is now the sole owner.) To add a package, edit
-`external_extensions.txt` — not this file.
+`external_extensions.txt` — not this file. To remove one, delete its line and run
+`./install.sh --prune`: the prune reconciles `pi list` against the declared set,
+so it now also evicts any orphan re-seeded by old tooling (the `pi-slopchop` case
+above), not just entries myagent installed itself.
 
 **`shellPath`** is *injected by install-pi.sh*, not stored in `pi_settings.json`,
 because the correct path is machine-specific (`/bin/zsh` on mac, a

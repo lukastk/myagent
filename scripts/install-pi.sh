@@ -411,25 +411,25 @@ fi
 echo ""
 echo "==> Installing Playwright MCP (patched)"
 
-# Playwright MCP is installed persistently (not via npx) so we can patch it.
-# mcp.json references this install at ~/.local/playwright-mcp.
+# Playwright MCP is installed persistently (not via npx) so we can patch
+# playwright-core for Brave. mcp.json references this install at
+# ~/.local/playwright-mcp.
 #
-# PATCH: Skip Browser.setDownloadBehavior in CDP connections.
-# Brave (and some other Chromium browsers) rejects this CDP call when connected
-# via --remote-debugging-port, causing "Browser context management is not
-# supported" errors. Playwright unconditionally sends this call during context
-# initialization in crBrowser.js.
+# LAYOUT NOTE: playwright-core >= 1.61 BUNDLES its server modules into a single
+# lib/coreBundle.js; older versions shipped separate files under
+# lib/server/chromium/ (crBrowser.js, chromiumSwitches.js). We therefore LOCATE
+# each patch target by searching for its code string rather than hardcoding a
+# path. A hardcoded path silently stopped matching after a playwright bump,
+# leaving Brave unpatched on every machine while the installer only warned — so
+# a patch that is expected but cannot be applied now FAILS LOUDLY (exit 1).
 #
 # Upstream fix: Playwright PR #40185 added a `noDefaults` option to
-# connectOverCDP() (merged 2026-04-21). Once @playwright/mcp ships a version
-# that uses noDefaults for CDP connections, this patch and the persistent
-# install can be removed — switch mcp.json back to npx.
-#
-# Track: https://github.com/nicobailon/pi-mcp-adapter/issues (or Playwright MCP)
+# connectOverCDP() (merged 2026-04-21). Once @playwright/mcp passes it for CDP
+# connections, the setDownloadBehavior patch and the persistent install can be
+# dropped — switch mcp.json back to npx.
 
 PLAYWRIGHT_MCP_DIR="$HOME/.local/playwright-mcp"
-PLAYWRIGHT_PATCH_TARGET="$PLAYWRIGHT_MCP_DIR/node_modules/playwright-core/lib/server/chromium/crBrowser.js"
-PLAYWRIGHT_PATCH_MARKER="patched for Brave CDP"
+PLAYWRIGHT_CORE_DIR="$PLAYWRIGHT_MCP_DIR/node_modules/playwright-core"
 
 mkdir -p "$PLAYWRIGHT_MCP_DIR"
 
@@ -441,50 +441,109 @@ else
     echo "    @playwright/mcp already installed"
 fi
 
-# Apply patch if not already applied
-if [ -f "$PLAYWRIGHT_PATCH_TARGET" ]; then
-    if grep -q "$PLAYWRIGHT_PATCH_MARKER" "$PLAYWRIGHT_PATCH_TARGET"; then
-        echo "    crBrowser.js patch (already applied)"
-    else
-        echo "    Patching crBrowser.js (skip setDownloadBehavior for Brave CDP)..."
-        cp "$PLAYWRIGHT_PATCH_TARGET" "$PLAYWRIGHT_PATCH_TARGET.bak"
-        sed -i '' "s/this._options.acceptDownloads !== \"internal-browser-default\"/false \/* $PLAYWRIGHT_PATCH_MARKER *\//" "$PLAYWRIGHT_PATCH_TARGET"
-        if grep -q "$PLAYWRIGHT_PATCH_MARKER" "$PLAYWRIGHT_PATCH_TARGET"; then
-            echo "    Patch applied successfully"
-        else
-            echo "    WARNING: Patch failed — restoring backup"
-            mv "$PLAYWRIGHT_PATCH_TARGET.bak" "$PLAYWRIGHT_PATCH_TARGET"
-        fi
-    fi
-else
-    echo "    WARNING: crBrowser.js not found at expected path"
-fi
+# Portable in-place edit. GNU and BSD `sed -i` take incompatible arguments
+# (`-i` vs `-i ''`); editing via a temp file sidesteps that entirely so the same
+# code runs on Linux and macOS.
+sed_inplace() {
+    local expr="$1" file="$2" tmp
+    tmp="$(mktemp)"
+    sed "$expr" "$file" > "$tmp"
+    mv "$tmp" "$file"
+}
 
-# PATCH 2: Drop --use-mock-keychain / --password-store=basic from the default
-# Chromium launch switches. brave-cdp-mcp's default isolated mode has Playwright
-# LAUNCH Brave itself (lazily, on first browser tool call); those two switches
-# force a mock keychain, so the launched Brave can't decrypt the seeded profile's
-# cookies and lands logged-out. Removing them lets Brave use the real macOS
-# "Brave Safe Storage" keychain key (already granted to the Brave app, so no
-# prompt) → the isolated browser is logged in. Only affects launch mode;
-# CDP-connect mode (real Brave / BRAVE_CDP_REAL opt-out) never launches a browser.
-PLAYWRIGHT_SWITCHES_TARGET="$PLAYWRIGHT_MCP_DIR/node_modules/playwright-core/lib/server/chromium/chromiumSwitches.js"
-if [ -f "$PLAYWRIGHT_SWITCHES_TARGET" ]; then
-    if grep -q '"--use-mock-keychain"' "$PLAYWRIGHT_SWITCHES_TARGET"; then
-        echo "    Patching chromiumSwitches.js (drop mock-keychain for Brave launch mode)..."
-        cp "$PLAYWRIGHT_SWITCHES_TARGET" "$PLAYWRIGHT_SWITCHES_TARGET.bak"
-        sed -i '' '/^  "--password-store=basic",$/d; /^  "--use-mock-keychain",$/d' "$PLAYWRIGHT_SWITCHES_TARGET"
-        if grep -q '"--use-mock-keychain"' "$PLAYWRIGHT_SWITCHES_TARGET"; then
-            echo "    WARNING: chromiumSwitches.js patch failed — restoring backup"
-            mv "$PLAYWRIGHT_SWITCHES_TARGET.bak" "$PLAYWRIGHT_SWITCHES_TARGET"
-        else
-            echo "    Patch applied successfully"
-        fi
+# Find the playwright-core file that contains a fixed string (ignoring our own
+# .bak backups). Empty output if none.
+find_core_file_with() {
+    grep -rlF "$1" "$PLAYWRIGHT_CORE_DIR" 2>/dev/null | grep -v '\.bak$' | head -1
+}
+
+# Apply a one-shot string replacement to whichever core file holds it.
+#   $1 label   $2 target string   $3 replacement (must contain the marker)
+#   $4 done-marker
+# Idempotent (skips when the marker is already present); LOUD on failure.
+apply_core_patch() {
+    local label="$1" target="$2" repl="$3" marker="$4"
+
+    if [ -n "$(find_core_file_with "$marker")" ]; then
+        echo "    $label (already applied)"
+        return 0
+    fi
+
+    local file
+    file="$(find_core_file_with "$target")"
+    if [ -z "$file" ]; then
+        echo "    ERROR: $label — neither the target code nor the marker was found" >&2
+        echo "           in $PLAYWRIGHT_CORE_DIR. playwright-core layout likely" >&2
+        echo "           changed again; update this patch." >&2
+        exit 1
+    fi
+
+    echo "    $label (patching $(basename "$file"))"
+    cp "$file" "$file.bak"
+    # `|` delimiter so the `/` in the comment marker needs no escaping.
+    sed_inplace "s|$target|$repl|" "$file"
+    if grep -qF "$marker" "$file"; then
+        echo "      ok"
+        rm -f "$file.bak"
     else
-        echo "    chromiumSwitches.js patch (already applied)"
+        echo "    ERROR: $label — replacement did not take; restored backup" >&2
+        mv "$file.bak" "$file"
+        exit 1
+    fi
+}
+
+# PATCH 1 (all platforms): skip the Chromium `Browser.setDownloadBehavior` CDP
+# call. Brave rejects it when driven over CDP (the connect path Linux always
+# uses, and the macOS BRAVE_CDP_REAL opt-out), raising "Browser context
+# management is not supported". We neutralise only the Chromium guard — the
+# compound condition that also checks `name !== "clank"` — leaving the unrelated
+# BiDi/Firefox download path intact. Harmless in launch mode (just doesn't
+# configure download behaviour), so it is applied everywhere.
+apply_core_patch \
+    "setDownloadBehavior skip" \
+    'this._browser.options.name !== "clank" && this._options.acceptDownloads !== "internal-browser-default"' \
+    'false /* patched for Brave CDP */' \
+    'patched for Brave CDP'
+
+# PATCH 2 (macOS only): drop --use-mock-keychain / --password-store=basic from
+# the Chromium launch switches. In isolated launch mode (the macOS default)
+# Playwright LAUNCHES Brave itself; those switches force a mock keychain so the
+# launched Brave can't decrypt the seeded profile's cookies and lands logged-out.
+# Removing them lets Brave use the real macOS "Brave Safe Storage" key (already
+# granted to the Brave app) → the isolated browser is logged in. On Linux the
+# launcher CONNECTS to an existing Brave and never launches one, so these
+# switches are irrelevant — skip the patch entirely there.
+if [ "$(uname -s)" = "Darwin" ]; then
+    # The switch lives in coreBundle.js (bundled) or the legacy per-file
+    # chromiumSwitches.js. Deliberately NOT electron/loader.js — that copy is the
+    # Electron launch path, not how we launch Brave.
+    switches_file=""
+    for cand in \
+        "$PLAYWRIGHT_CORE_DIR/lib/coreBundle.js" \
+        "$PLAYWRIGHT_CORE_DIR/lib/server/chromium/chromiumSwitches.js"; do
+        [ -f "$cand" ] && { switches_file="$cand"; break; }
+    done
+    if [ -z "$switches_file" ]; then
+        echo "    ERROR: mock-keychain patch — no chromium switches file found in" >&2
+        echo "           $PLAYWRIGHT_CORE_DIR (coreBundle.js / chromiumSwitches.js)." >&2
+        exit 1
+    fi
+    if grep -qF '"--use-mock-keychain"' "$switches_file"; then
+        echo "    mock-keychain patch (patching $(basename "$switches_file"))"
+        cp "$switches_file" "$switches_file.bak"
+        sed_inplace 's|"--password-store=basic",||; s|"--use-mock-keychain",||' "$switches_file"
+        if grep -qF '"--use-mock-keychain"' "$switches_file"; then
+            echo "    ERROR: mock-keychain patch did not take; restored backup" >&2
+            mv "$switches_file.bak" "$switches_file"
+            exit 1
+        fi
+        echo "      ok"
+        rm -f "$switches_file.bak"
+    else
+        echo "    mock-keychain patch (already applied)"
     fi
 else
-    echo "    WARNING: chromiumSwitches.js not found at expected path"
+    echo "    mock-keychain patch (skipped — not macOS; launcher connects, never launches)"
 fi
 
 # Symlink the per-agent isolated-Brave launcher next to the playwright install,

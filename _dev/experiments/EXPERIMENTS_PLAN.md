@@ -102,21 +102,25 @@ decision). Login on Linux = whatever the box's own Brave profile already has.
   Linux (cross-platform cookie migration is out of scope).
 - **Workflow:** experiment code gitignored; `EXPERIMENTS_PLAN.md` + each
   `FINDINGS.md` tracked.
+- **SHIPPED** `scripts/brave-cdp/brave-cdp-mcp` (this same commit):
+  - **Launch trigger:** launch-mode is now the default whenever a launchable Brave
+    exists (macOS *or* Linux); only termux / no-local-Brave falls back to
+    connect-mode. `BRAVE_CDP_REAL=1` / `BRAVE_CDP_PORT` remain the connect opt-out.
+    Consequence: Linux agents no longer need a pre-running `:9222` Brave.
+  - **Headless:** `--headless` (+ `--no-sandbox`) only when non-Darwin AND `DISPLAY`
+    is unset (so a Linux desktop still gets a headed window). Override:
+    `BRAVE_CDP_HEADLESS=1/0`.
+  - **`--no-sandbox`:** coupled with the headless decision (headless cloud/server
+    boxes can't run the sandbox). Revisit if a headed-but-containerised Linux box
+    ever needs it.
+  - **Seed source:** Linux seeds from `~/.config/BraveSoftware/Brave-Browser`
+    (same profile `brave-mcp` uses); macOS path unchanged. No `install-pi.sh` change
+    (patch 2 stays Darwin-only; default `--password-store=basic` is what we want).
+  - **End-to-end verified** on mymain via a real pi sesh: browsed example.com + IGN,
+    and proved launch-mode (isolated `/tmp/brave-cdp/<pid>` profile, `--headless=new`,
+    no `:9222` connect).
 
-## Still to decide (for implementation)
+## Still to decide
 
-- **Launch trigger:** make launch-mode the Linux default, gated on "a launchable
-  Brave binary exists" (else connect-mode for termux / no-local-Brave). Keep
-  `BRAVE_CDP_REAL=1` / `BRAVE_CDP_PORT` as the connect opt-out. *(Recommended;
-  symmetric with macOS. Note: this means Linux agents no longer depend on a
-  pre-running `:9222` Brave — a simplification, but a behaviour change to confirm.)*
-- **Headless:** always `--headless` on Linux, or only when `DISPLAY` is unset (so a
-  Linux *desktop* could get a visible window like macOS)? mymain is headless so
-  `--headless` is required there regardless.
-- **`--no-sandbox`:** required on mymain (container). Always pass on Linux, or only
-  when a sandbox launch fails / when containerised?
-- **Seed source:** default profile `~/.config/BraveSoftware/Brave-Browser` (same as
-  `brave-mcp`) — confirmed fine. (A dedicated seed profile only matters if we later
-  pursue logged-in parity, which is out of scope.)
-- **End-to-end check:** prototype the modified launcher and drive it through a real
-  sesh on mymain (launch-mode, not connect) before shipping.
+- *(none — isolation-only parity is implemented and verified. Logged-in parity
+  remains explicitly out of scope.)*

@@ -5,12 +5,14 @@
 #
 # Modes
 # -----
-#   default (macOS)        → LAUNCH mode: Playwright launches a dedicated Brave
-#                            against a per-agent seeded profile, LAZILY on the
-#                            first browser tool call, and closes it on shutdown.
+#   default (macOS or Linux  → LAUNCH mode: Playwright launches a dedicated Brave
+#   with a launchable Brave)   against a per-agent seeded profile, LAZILY on the
+#                              first browser tool call, and closes it on shutdown.
+#                              Headed on macOS / a Linux desktop; HEADLESS on a
+#                              Linux box with no DISPLAY (cloud/server).
 #   BRAVE_CDP_REAL=1       → connect to the real interactive Brave on :9222.
 #   BRAVE_CDP_PORT=<port>  → connect to an explicit already-running CDP port.
-#   non-macOS              → connect-only to BRAVE_CDP_PORT or :9222.
+#   no launchable Brave    → connect-only to BRAVE_CDP_PORT or :9222 (e.g. termux).
 #
 # Why launch mode instead of connect-over-CDP for isolation
 # ---------------------------------------------------------
@@ -25,11 +27,19 @@
 #
 # Logged in
 # ---------
-# The profile is seeded from the real Brave profile (cookies + encryption key),
-# and scripts/install-pi.sh patches chromiumSwitches.js to drop
-# --use-mock-keychain / --password-store=basic so the launched Brave decrypts
-# those cookies via the real macOS "Brave Safe Storage" keychain key. The seed
-# is tiny (~1 MB: just the key + cookie DBs; the heavy Extensions dir is
+# The profile is seeded from the real Brave profile (cookies + encryption key).
+# The launched Brave must decrypt those cookies, and that differs by OS:
+#   - macOS: cookies are encrypted with the "Brave Safe Storage" KEYCHAIN key, so
+#     scripts/install-pi.sh patch 2 drops --use-mock-keychain / --password-store=basic
+#     (both Darwin-only) to make the launched Brave use the real keychain key.
+#   - Linux: cookies are encrypted with the hardcoded "peanuts" key (v10,
+#     --password-store=basic, no keychain/keyring). Patch 2 does NOT run on Linux,
+#     so the launched Brave keeps Playwright's default --password-store=basic and
+#     decrypts the seeded cookies for free — no keychain machinery. (NOTE: on a
+#     headless cloud box the box's own Brave profile may be barely logged in, so
+#     "logged in as you" is weaker on Linux than macOS — the isolated Brave just
+#     inherits whatever the box profile has.)
+# The seed is tiny (~1 MB: just the key + cookie DBs; the heavy Extensions dir is
 # symlinked) so seeding at startup is cheap even for sessions that never browse.
 # Cookie-based logins (Google, GitHub, most sites) work; sites that keep auth in
 # Local Storage / IndexedDB are not covered by the cheap seed.
@@ -37,10 +47,20 @@
 PW_DIR="$HOME/.local/playwright-mcp"
 CLI="${BRAVE_CDP_CLI:-$PW_DIR/node_modules/@playwright/mcp/cli.js}"
 PROFILES_ROOT="/tmp/brave-cdp"          # /tmp so the OS reaps stale profiles
-BRAVE_BIN="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
-BASE_PROFILE="$HOME/Library/Application Support/BraveSoftware/Brave-Browser"
 REAL_PORT=9222
 RUNNER="${BRAVE_CDP_RUNNER:-node}"
+
+# OS-specific Brave binary + the source profile we seed each agent's copy from.
+case "$(uname -s)" in
+  Darwin)
+    BRAVE_BIN="${BRAVE_CDP_BRAVE_BIN:-/Applications/Brave Browser.app/Contents/MacOS/Brave Browser}"
+    BASE_PROFILE="$HOME/Library/Application Support/BraveSoftware/Brave-Browser"
+    ;;
+  *)
+    BRAVE_BIN="${BRAVE_CDP_BRAVE_BIN:-$(command -v brave-browser || command -v brave || true)}"
+    BASE_PROFILE="$HOME/.config/BraveSoftware/Brave-Browser"
+    ;;
+esac
 
 log() { echo "[brave-cdp-mcp] $*" >&2; }
 
@@ -51,19 +71,22 @@ exec_connect() {  # $1 = port; remaining args forwarded to the cli
   exec $RUNNER "$CLI" --cdp-endpoint "http://localhost:$port" "$@"
 }
 
-# --- connect-only modes (no isolation) ---
-if [ "$(uname -s)" != "Darwin" ] || [ "${BRAVE_CDP_REAL:-}" = "1" ]; then
+# --- connect-only modes (opt-out / no launchable Brave; no isolation) ---
+# Attach to the real interactive Brave (e.g. to watch it live).
+if [ "${BRAVE_CDP_REAL:-}" = "1" ]; then
   exec_connect "${BRAVE_CDP_PORT:-$REAL_PORT}" "$@"
 fi
+# Attach to an explicitly-specified already-running CDP endpoint.
 if [ -n "${BRAVE_CDP_PORT:-}" ]; then
   exec_connect "$BRAVE_CDP_PORT" "$@"
 fi
+# No launchable Brave on this box (e.g. termux) → connect to a remote/real :9222.
 if [ ! -x "$BRAVE_BIN" ]; then
-  log "Brave not found at '$BRAVE_BIN'; connecting to real Brave :$REAL_PORT"
+  log "no launchable Brave ('$BRAVE_BIN'); connecting to Brave :$REAL_PORT"
   exec_connect "$REAL_PORT" "$@"
 fi
 
-# --- isolated launch mode (default on macOS) ---
+# --- isolated launch mode (default on macOS and Linux-with-Brave) ---
 mkdir -p "$PROFILES_ROOT" 2>/dev/null
 
 # GC: drop profiles (and kill any orphaned Brave) for agents that have died.
@@ -101,4 +124,17 @@ fi
 
 # Launch mode: Playwright launches Brave against the persistent seeded profile
 # on the first browser tool call and closes it on shutdown. No --cdp-endpoint.
-exec $RUNNER "$CLI" --executable-path "$BRAVE_BIN" --user-data-dir "$PROFILE" "$@"
+#
+# On a headless Linux box (no DISPLAY) Brave must run headless, and its sandbox
+# usually can't initialise there (containers / restricted user namespaces) so we
+# disable it too. macOS and Linux desktops launch a real (headed) window.
+# Force either way with BRAVE_CDP_HEADLESS=1/0.
+LAUNCH_FLAGS=(--executable-path "$BRAVE_BIN" --user-data-dir "$PROFILE")
+headless="${BRAVE_CDP_HEADLESS:-}"
+if [ -z "$headless" ] && [ "$(uname -s)" != "Darwin" ] && [ -z "${DISPLAY:-}" ]; then
+  headless=1
+fi
+if [ "$headless" = "1" ]; then
+  LAUNCH_FLAGS+=(--headless --no-sandbox)
+fi
+exec $RUNNER "$CLI" "${LAUNCH_FLAGS[@]}" "$@"

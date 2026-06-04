@@ -16,7 +16,7 @@ project — both run):
 {
   "hooks": {
     "agent_end": [
-      { "command": "~/.mybin/__cc_notify_done" }
+      { "command": "notify-send 'pi: turn complete'" }
     ],
     "tool_call": [
       {

@@ -210,6 +210,18 @@ with open(sys.argv[1]) as f:
     data = json.load(f)
 
 for name, cfg in (data.get("mcpServers") or {}).items():
+    # Remote servers are defined by a `url` (no `command`). Claude Code speaks
+    # HTTP/SSE natively, so emit its url-based server JSON and let Claude handle
+    # the OAuth flow at connect time (via /mcp). `transport` defaults to http.
+    url = cfg.get("url")
+    if url:
+        out = {"type": cfg.get("transport", "http"), "url": url}
+        headers = cfg.get("headers") or {}
+        if headers:
+            out["headers"] = headers
+        print(f"{name}\t{json.dumps(out)}")
+        continue
+
     out = {"type": "stdio"}
     command = cfg.get("command")
     args = list(cfg.get("args") or [])

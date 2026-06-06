@@ -7,6 +7,14 @@
       "lifecycle": "lazy",
       "directTools": true
     },
+    "playwright-main": {
+      "command": "bash",
+      "args": ["brave-cdp-mcp"],
+      "cwd": "~/.local/playwright-mcp",
+      "env": { "BRAVE_CDP_REAL": "1" },
+      "lifecycle": "lazy",
+      "directTools": false
+    },
     "svelte": {
       "command": "npx",
       "args": ["-y", "@sveltejs/mcp"],

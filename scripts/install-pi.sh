@@ -546,6 +546,22 @@ else
     echo "    mock-keychain patch (skipped — not macOS; launcher connects, never launches)"
 fi
 
+# PATCH 3 (all platforms): clarify the browser_close tool description. Upstream
+# ships it as "Close the page", which made agents think it only closes the
+# current tab and leave the (expensive) per-agent Brave running for the whole
+# session. browser_close actually disposes the backend, which closes the context
+# AND the browser process (see playwright-core mcp/program.js `disposed`), fully
+# freeing its memory; Playwright relaunches the browser on the next browser tool
+# call. The new wording tells agents to close it when done. (Scope note: closing
+# is right for the default ISOLATED browser, not the BRAVE_CDP_REAL main browser
+# where it would shut the user's real window — that caveat lives in the global
+# browser-usage note, since the tool description is shared by both servers.)
+apply_core_patch \
+    "browser_close description" \
+    'description: "Close the page"' \
+    'description: "Close the entire browser, ending its process and freeing all of its memory. This does NOT merely close the current tab. Playwright relaunches the browser automatically on the next browser tool call, so call this as soon as you finish browsing to release resources." /* patched: browser_close frees resources */' \
+    'patched: browser_close frees resources'
+
 # Symlink the per-agent isolated-Brave launcher next to the playwright install,
 # so mcp.json's playwright server (command: bash, args: [brave-cdp-mcp],
 # cwd: ~/.local/playwright-mcp) can find it. The wrapper gives each agent its

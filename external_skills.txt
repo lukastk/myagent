@@ -8,3 +8,4 @@ lukastk/myrig@mysetup-navigator
 lukastk/appgarden@appgarden
 lukastk/mysystem@myvault
 lukastk/sesh@sesh-cli
+lukastk/tickets@ticketmaster

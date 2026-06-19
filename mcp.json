@@ -14,11 +14,6 @@
       "env": { "BRAVE_CDP_REAL": "1" },
       "lifecycle": "lazy",
       "directTools": false
-    },
-    "svelte": {
-      "command": "npx",
-      "args": ["-y", "@sveltejs/mcp"],
-      "lifecycle": "lazy"
     }
   }
 }

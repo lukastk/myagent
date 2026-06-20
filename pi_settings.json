@@ -2,6 +2,7 @@
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "high",
+  "defaultProjectTrust": "always",
   "enabledModels": [
     "deepseek/deepseek-v4-pro",
     "openai-codex/gpt-5.3-codex"

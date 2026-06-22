@@ -41,7 +41,10 @@ references and the user's sketches). This stage is about *taste and direction*, 
   key-visual, applied-home — not just a logo (a standing user rule). A concept only reads as
   real when you see it applied.
 - Show the user thumbnails/galleries to choose from (generate at full size, then thumbnail to
-  WebP — full PNGs are large and make galleries crawl).
+  WebP — full PNGs are large and make galleries crawl). **Always link each thumbnail through to
+  its full-resolution original** (wrap the `<img>` in an `<a href="full/…">`) and say so in the
+  gallery — the user must be able to click through to inspect detail. A downscaled-only gallery
+  is too soft to judge an asset by, and is the wrong default.
 
 ### 2. Lock
 

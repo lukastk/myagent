@@ -12,9 +12,12 @@
 3. **Iterate with the user on the raster.** Recolours, variants, motif ideas. Carry each
    concept through the **full asset suite** (logo, board, assets sheet, key-visual,
    applied-home) — a concept only reads as real when applied.
-4. **Galleries:** generate at full size, then thumbnail to WebP. Make concepts/generations
-   URL-linkable so the user can point at exactly one. Deploy the gallery as an AppGarden static
-   for review.
+4. **Galleries:** generate at full size, then thumbnail to WebP for the grid — but **always
+   link each thumbnail through to its full-resolution original** (wrap the `<img>` in an
+   `<a href="full/…">` and tell the user they can click to open it full-size). Downscaled
+   thumbnails keep the gallery fast; the full-res click-through lets the user actually judge
+   detail — ship both, never thumbnails alone. Make concepts/generations URL-linkable so the
+   user can point at exactly one. Deploy the gallery as an AppGarden static for review.
 
 ## No SVGs during ideation
 

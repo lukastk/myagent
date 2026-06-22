@@ -2,6 +2,27 @@
 
 Personal Pi coding agent extensions, skills, and configuration.
 
+## SSHing into my machines
+
+To ssh into one of my machines (or run a command on one), **prefer
+`ssh-target <machine> [args...]`** — the canonical path. It looks the machine up
+in the `MYRIG_MACHINES` zsh array (`macbook`, `macstudio`, `mymain`, `termux`)
+and connects with the right user/host/port, plus connection multiplexing, a fast
+`ConnectTimeout`, and `StrictHostKeyChecking=accept-new`. Run `ssh-target` with
+no args to list the machines.
+
+Per-machine shortcuts also exist (convenience, no multiplexing/timeout): `sm`
+(macbook), `sr` (mymain, routes via `hcloud`), `sa` (`android-main -p 8022`),
+plus `ssh-macstudio`, `ssh-mymain-root`, `ssh-kindle`. Pickers: `tssh [machine]`
+(Tailscale fzf picker) and `hssh [user@][context:]server` (Hetzner cloud boxes).
+
+Non-interactive ssh doesn't load login-shell functions — to call one (e.g.
+`myrig-reinstall-home`) prepend `source ~/.myrig/utils.sh &&`.
+
+For the full machine inventory, the desktop-enabled `mymain` box, the cross-machine
+tmux cockpit, and the rest of my setup/tooling, **use the `mysetup-navigator`
+skill** (its "SSHing into the machines" section is the source of truth here).
+
 ## Repo structure
 
 ```

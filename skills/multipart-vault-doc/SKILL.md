@@ -100,12 +100,27 @@ Generate a script (see `assets/copy_to_vault.py`) that:
 3. Creates the notes **via the `myvault` note system** (get the exact create invocation from that
    skill): the main doc as a Document note titled as requested, each sub-note as a Null note in the
    null folder, referenced by the main doc. Set `stage: live`.
-4. Is **idempotent** — the vault's `create` refuses to overwrite, so delete the target note first,
-   then recreate (safe to re-run after every edit).
+4. Is **idempotent and non-destructive** — the vault's `create` refuses to overwrite, so before
+   deleting each target note, **copy it to a timestamped tmp backup**
+   (`$TMPDIR/multipart-vault-doc-backups/<stamp>/`), then delete and recreate. This backup is
+   essential, not optional: Lukas frequently hand-edits these notes in the vault between runs
+   (e.g. `==…==` review highlights), and without the backup a re-run **silently destroys** those
+   edits. The template already implements this — keep it, and tell Lukas where the backup landed.
 
 After running it, **verify**: every wikilink target resolves to a real note, and every
 `#anchor` referenced resolves to a heading in the glossary. (A quick `grep`/`comm` check over the
 generated files is enough.)
+
+### Recovering edits lost before backups existed
+
+If a re-run overwrote vault edits and no backup was taken, Obsidian's **File Recovery** core
+plugin is the fallback. It keeps periodic snapshots in a leveldb at
+`~/.config/obsidian/IndexedDB/app_obsidian.md_*.leveldb` — work on a **copy**, never the live DB.
+Note **content is stored UTF-16LE** (path-keys are ASCII), so decode with both byte parities
+(`raw.decode('utf-16-le','replace')` and `raw[1:]...`) and grep for the user's distinctive text
+(e.g. `==`, `LUKAS`). Reconstruct a note by slicing from its stable `# NN · Heading` to its
+`↑ Index]]` footer, then diff (normalizing `[[wikilinks]]`) against the current version to isolate
+their additions.
 
 ## Visualizations (so they render in Obsidian)
 
@@ -129,4 +144,6 @@ and dark themes:
 - **One concept per note**, screen-sized.
 - **Every link verified** — no dangling wikilinks, no dead `#anchor`s.
 - **Keep the long source** alongside the doc set; this is the companion view.
+- **Never overwrite vault notes without backing them up first** — Lukas edits in place; the copy
+  script must back up before deleting (see step 5.4).
 - Re-running the copy script is the loop: edit the local notes, re-run, re-read in the vault.

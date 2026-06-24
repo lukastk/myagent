@@ -2,6 +2,28 @@
 
 Personal Pi coding agent extensions, skills, and configuration.
 
+## Anti-pattern: never hand-create folders in `~/dev` (it is boxyard-managed)
+
+`~/dev` is **boxyard's** managed box area (`user_boxes_path`). Every folder there is a
+boxyard **box** named `<date>_<subid>__<name>` with metadata stored centrally in
+`~/.boxyard`.
+
+**Do NOT** create a folder directly in `~/dev` — e.g. `git worktree add ~/dev/my-feature`
+or `mkdir ~/dev/scratch`. Such a folder is not boxyard-compliant (no metadata, wrong name),
+so boxyard can't see or manage it and it pollutes the yard.
+
+**Do this instead** — create work folders through the boxyard CLI:
+- New empty / cloned box: `boxyard new -n <name> [--git-clone <url>] [-g <group>]`.
+- Adopt an EXISTING folder: move it **out of `~/dev`** into a tmp dir first, then
+  `boxyard new --from <tmpdir> -n <name> [-g <group>]` (takes it in as a compliant box;
+  `--copy` to copy rather than move, `--no-initialise-git` for a plain snapshot).
+- Need an isolated checkout for parallel work (e.g. a git worktree)? Put it **outside**
+  `~/dev` (e.g. under `~/tmp` or the repo's own `.worktrees/`), or make it a boxyard box —
+  but never `git worktree add` into `~/dev`.
+
+(Recorded after an agent created plain `git worktree add` folders under `~/dev`, which were
+not boxyard boxes and had to be moved out and re-imported via `boxyard new --from`.)
+
 ## SSHing into my machines
 
 To ssh into one of my machines (or run a command on one), **prefer

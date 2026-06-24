@@ -122,6 +122,43 @@ Note **content is stored UTF-16LE** (path-keys are ASCII), so decode with both b
 `↑ Index]]` footer, then diff (normalizing `[[wikilinks]]`) against the current version to isolate
 their additions.
 
+## Review loop: comments ↔ responses
+
+Lukas reads and annotates in the vault. Run a **bidirectional margin dialogue** so each of his
+comments and your response link to each other via Obsidian **block references**.
+
+**Comment markup (recommend this to him).** Prefer **callouts** over `==highlight==`:
+
+```md
+> [!lukas] short title
+> The comment — can span multiple paragraphs, lists, code blocks.
+```
+
+Callouts are block-level (multi-line, lists, code all work), visually scannable, collapsible
+(`> [!lukas]-`), trivially greppable (`grep '\[!lukas\]'`), and block-referenceable. `==LUKAS:
+…==` highlights still work for a quick mid-sentence note but are fragile for anything multi-line
+(a list inside a highlight breaks). A custom callout type renders fine even without a CSS snippet.
+
+**Wiring the dialogue (scripted, with backups):**
+
+1. Create a **response pad** — a *separate, durable* note (NOT one of the generated set, so the
+   publish script never regenerates it). One block per answer, each ending in a block id
+   `^cl-<key>` and opening with a back-link `[[<source note>#^lk-<key>|↑ comment]]`.
+2. Tag each source comment in place: append a forward link + block id —
+   `… [[<response pad>#^cl-<key>|↳ response]] ^lk-<key>`. The block id must be **last** on the
+   line. Derive stable keys from the note number + occurrence (e.g. `lk-08a`, `lk-p4`).
+3. Do the tagging with a script that **backs up each file first** and is idempotent (skip lines
+   already carrying `^lk-`).
+4. **Verify both directions**: every `#^cl-…` referenced from a comment resolves to a block in the
+   response pad, and every `#^lk-…` referenced from the response pad resolves to a tagged comment
+   (a quick Python set-diff; mind filenames with spaces — glob in Python, don't word-split in sh).
+
+**Freeze publishing during an open review round.** Inline comments live in the *generated* notes,
+so re-running the copy script regenerates them clean and drops the comments and their block ids
+(the response pad and Lukas's own notes-pad are durable — not regenerated). So: harvest + answer
+first; only once a round is resolved do you fold accepted changes into the local source, bump the
+version (V2 → V3), and republish clean.
+
 ## Visualizations (so they render in Obsidian)
 
 Obsidian's reading view renders inline HTML and SVG. Guidance that renders reliably in both light

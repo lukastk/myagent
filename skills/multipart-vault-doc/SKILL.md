@@ -146,6 +146,14 @@ in `.obsidian/appearance.json`'s `enabledCssSnippets`).
 When wiring the dialogue, the comment's block id and `↳ response` link go on a non-quoted line
 **directly after** the callout (a callout is one block; the trailing `^id` references it).
 
+**Two shapes of reply.** (a) *Scattered comments → collected responses*: comments live across the
+generated notes; you gather answers in a response pad and cross-link with block refs (above).
+(b) *Threaded dialogue*: once discussion consolidates into the response pad, the user replies with
+`> [!lukas]` callouts **inline beneath** specific responses. Answer those **inline** with a
+`> [!claude]` callout directly below theirs — they're adjacent, so **no block refs needed**. Treat
+unanswered points as tacit agreement only if the user says so. (`[!claude]` can share the same
+optional CSS snippet as `[!lukas]`.)
+
 **Wiring the dialogue (scripted, with backups):**
 
 1. Create a **response pad** — a *separate, durable* note (NOT one of the generated set, so the

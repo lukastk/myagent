@@ -127,7 +127,7 @@ their additions.
 Lukas reads and annotates in the vault. Run a **bidirectional margin dialogue** so each of his
 comments and your response link to each other via Obsidian **block references**.
 
-**Comment markup (recommend this to him).** Prefer **callouts** over `==highlight==`:
+**Comment markup — use callouts.** Comments are written as **callouts**, not `==highlight==`:
 
 ```md
 > [!lukas] short title
@@ -135,9 +135,16 @@ comments and your response link to each other via Obsidian **block references**.
 ```
 
 Callouts are block-level (multi-line, lists, code all work), visually scannable, collapsible
-(`> [!lukas]-`), trivially greppable (`grep '\[!lukas\]'`), and block-referenceable. `==LUKAS:
-…==` highlights still work for a quick mid-sentence note but are fragile for anything multi-line
-(a list inside a highlight breaks). A custom callout type renders fine even without a CSS snippet.
+(`> [!lukas]-`), trivially greppable (`grep '\[!lukas\]'`), and block-referenceable, so the
+harvester reads `> [!lukas]` (and optionally `[!q]` question / `[!idea]` suggestion) as the
+primary marker. `==LUKAS: …==` highlights are only a fallback for a quick mid-sentence note (a
+list inside a highlight breaks). A custom callout type renders fine un-styled; an optional CSS
+snippet in `.obsidian/snippets/` can give `[!lukas]`/`[!q]`/`[!idea]` a distinct colour + icon
+(target `.callout[data-callout="lukas"]` with `--callout-color` / `--callout-icon`, and enable it
+in `.obsidian/appearance.json`'s `enabledCssSnippets`).
+
+When wiring the dialogue, the comment's block id and `↳ response` link go on a non-quoted line
+**directly after** the callout (a callout is one block; the trailing `^id` references it).
 
 **Wiring the dialogue (scripted, with backups):**
 
@@ -158,6 +165,15 @@ so re-running the copy script regenerates them clean and drops the comments and 
 (the response pad and Lukas's own notes-pad are durable — not regenerated). So: harvest + answer
 first; only once a round is resolved do you fold accepted changes into the local source, bump the
 version (V2 → V3), and republish clean.
+
+## Chronology pad
+
+Maintain one **chronology pad** per project: a numbered list of internal links to each
+standalone/master document produced, in order of creation (newest at the bottom). List
+**master/multipart docs by their top note only** — never the generated sub-notes they reference.
+Include the user's *own* docs too (review-notes pads, etc.); if they create one and mention it but
+forget to add it, add it for them. It's a durable note (a normal pad, never regenerated) and the
+fastest "where are we / what exists" index for the project.
 
 ## Visualizations (so they render in Obsidian)
 

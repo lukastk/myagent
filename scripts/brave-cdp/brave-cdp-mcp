@@ -130,11 +130,46 @@ fi
 # disable it too. macOS and Linux desktops launch a real (headed) window.
 # Force either way with BRAVE_CDP_HEADLESS=1/0.
 LAUNCH_FLAGS=(--executable-path "$BRAVE_BIN" --user-data-dir "$PROFILE")
+LAUNCH_ENV=()
 headless="${BRAVE_CDP_HEADLESS:-}"
 if [ -z "$headless" ] && [ "$(uname -s)" != "Darwin" ] && [ -z "${DISPLAY:-}" ]; then
   headless=1
 fi
 if [ "$headless" = "1" ]; then
+  # Headless (cloud Linux): the sandbox usually can't initialise, so disable it.
   LAUNCH_FLAGS+=(--headless --no-sandbox)
+else
+  # Headed (macOS / Linux desktop): force the Chromium sandbox ON. @playwright/mcp
+  # leaves chromiumSandbox undefined for an --executable-path browser — its config
+  # only defaults it for browserName "chromium", which is never set on this path —
+  # so Playwright passes --no-sandbox and Brave shows the alarming "unsupported
+  # command-line flag: --no-sandbox" banner. PLAYWRIGHT_MCP_SANDBOX is the one knob
+  # that survives that branch (CLI --sandbox gets mapped back to undefined).
+  LAUNCH_ENV+=(PLAYWRIGHT_MCP_SANDBOX=true)
 fi
-exec $RUNNER "$CLI" "${LAUNCH_FLAGS[@]}" "$@"
+
+# Resolve the runtime to an absolute path: under the macOS asuser wrapper below the
+# command runs with the GUI session's PATH, which won't contain a mise/nvm node.
+RUNNER_BIN="$(command -v "$RUNNER" 2>/dev/null || echo "$RUNNER")"
+
+# macOS keychain re-association. The agent (a sesh/tmux server) runs in the launchd
+# "Background" domain, which can't reach the Security Server. A Brave launched as
+# its descendant then fails the "Brave Safe Storage" keychain lookup with
+# errSecInteractionNotAllowed (-25308), can't decrypt the seeded v10 cookies, and
+# silently DROPS them all — so the isolated Brave is logged out of everything.
+# Re-associating the MCP server (and thus the Brave it spawns) with the user's
+# GUI/Aqua session via `launchctl asuser` restores keychain access. The audit-
+# session switch needs root, so the outer `sudo launchctl asuser` runs as root; the
+# inner `sudo -u $USER` then drops straight back to the user IN that session — which
+# still reaches the keychain but keeps the profile files user-owned (root-owned
+# files would defeat the GC above). We only ever use passwordless sudo and probe the
+# exact path first; if it's unavailable we fall back to a plain launch (isolation
+# still works, just not logged in). Inline `env` passes our vars through sudo, which
+# would otherwise strip them. Darwin-only — Linux cookies use the portable
+# "basic"/peanuts key and need no keychain.
+if [ "$(uname -s)" = "Darwin" ] && command -v launchctl >/dev/null 2>&1 \
+   && sudo -n launchctl asuser "$(id -u)" sudo -n -u "$USER" true 2>/dev/null; then
+  exec sudo -n launchctl asuser "$(id -u)" sudo -n -u "$USER" \
+    env "${LAUNCH_ENV[@]}" "$RUNNER_BIN" "$CLI" "${LAUNCH_FLAGS[@]}" "$@"
+fi
+exec env "${LAUNCH_ENV[@]}" "$RUNNER_BIN" "$CLI" "${LAUNCH_FLAGS[@]}" "$@"

@@ -166,14 +166,20 @@ so re-running the copy script regenerates them clean and drops the comments and 
 first; only once a round is resolved do you fold accepted changes into the local source, bump the
 version (V2 → V3), and republish clean.
 
-## Chronology pad
+## Ideation chronology
 
-Maintain one **chronology pad** per project: a numbered list of internal links to each
-standalone/master document produced, in order of creation (newest at the bottom). List
-**master/multipart docs by their top note only** — never the generated sub-notes they reference.
-Include the user's *own* docs too (review-notes pads, etc.); if they create one and mention it but
-forget to add it, add it for them. It's a durable note (a normal pad, never regenerated) and the
-fastest "where are we / what exists" index for the project.
+Maintain one **Ideation chronology** pad per project (titled `<Project> - Ideation chronology`): a
+numbered list of internal links to each standalone/master document produced, in order of creation
+(newest at the bottom). List **master/multipart docs by their top note only** — never the generated
+sub-notes they reference. Include the user's *own* docs too (review-notes pads, etc.); if they
+create one and mention it but forget to add it, add it for them. Durable (a normal pad, never
+regenerated); the fastest "what exists / where are we" index for the project.
+
+**Parenting rules (myvault):**
+- Every pad *you* create for the project is parented to the Ideation chronology
+  (`parents: ["[[<Project> - Ideation chronology]]"]`).
+- The Ideation chronology's *own* parent is not assumed — **ask the user** which note it should be
+  (typically the project's `mod/` note) and set that.
 
 ## Visualizations (so they render in Obsidian)
 

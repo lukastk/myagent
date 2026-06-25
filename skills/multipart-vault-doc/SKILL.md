@@ -140,8 +140,11 @@ comments and your response link to each other via Obsidian **block references**.
 ```
 
 Callouts are block-level (multi-line, lists, code all work), visually scannable, collapsible
-(`> [!lukas]-`), trivially greppable (`grep '\[!lukas\]'`), and block-referenceable, so the
+(`> [!lukas]-`), trivially greppable (`grep -i '\[!lukas\]'`), and block-referenceable, so the
 harvester reads `> [!lukas]` (and optionally `[!q]` question / `[!idea]` suggestion) as the
+**primary marker — and MUST match case-insensitively** (users write `[!Lukas]`, `[!LUKAS]`, etc.;
+a case-sensitive harvest silently misses comments). Callouts are multi-line: capture the whole
+block (the `[!lukas]` line plus following `>` lines), not just the first line.
 primary marker. `==LUKAS: …==` highlights are only a fallback for a quick mid-sentence note (a
 list inside a highlight breaks). A custom callout type renders fine un-styled; an optional CSS
 snippet in `.obsidian/snippets/` can give `[!lukas]`/`[!q]`/`[!idea]` a distinct colour + icon

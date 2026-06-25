@@ -154,13 +154,14 @@ in `.obsidian/appearance.json`'s `enabledCssSnippets`).
 When wiring the dialogue, the comment's block id and `↳ response` link go on a non-quoted line
 **directly after** the callout (a callout is one block; the trailing `^id` references it).
 
-**Two shapes of reply.** (a) *Scattered comments → collected responses*: comments live across the
-generated notes; you gather answers in a response pad and cross-link with block refs (above).
-(b) *Threaded dialogue*: once discussion consolidates into the response pad, the user replies with
-`> [!lukas]` callouts **inline beneath** specific responses. Answer those **inline** with a
-`> [!claude]` callout directly below theirs — they're adjacent, so **no block refs needed**. Treat
-unanswered points as tacit agreement only if the user says so. (`[!claude]` can share the same
-optional CSS snippet as `[!lukas]`.)
+**ALL responses go in the Claude responses pad — never inline in the generated notes.** This is a
+firm rule. Wherever the user's comments live (inline `[!lukas]` callouts across the notes, or a
+"my notes" pad), gather **every** answer into the single durable `… - Claude responses` pad and
+cross-link with block refs. **Do NOT reply inline with `[!claude]` callouts in the generated
+notes** — those notes get regenerated for the next version, so any inline reply is silently lost;
+the responses pad survives, keeps the whole dialogue in one readable place, and stays consistent
+across rounds. (Inline `[!claude]` threading is acceptable *only within the responses pad itself*,
+which is durable.) Treat unanswered points as tacit agreement only if the user says so.
 
 **Wiring the dialogue (scripted, with backups):**
 

@@ -23,6 +23,7 @@ a timestamped tmp backup before deleting, so manual edits are recoverable. Do no
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -61,6 +62,13 @@ def rewrite_links(text: str) -> str:
     return text
 
 
+def fix_link_breaks(text: str) -> str:
+    """Safety net: a wikilink must live on one line. Join any newline trapped inside [[...]].
+    Notes should be authored UNWRAPPED (one line per paragraph); this just stops a stray
+    hard-wrap from silently breaking a link."""
+    return re.sub(r"\[\[[^\]]*\]\]", lambda m: re.sub(r"\s*\n\s*", " ", m.group(0)), text)
+
+
 def target_path(title: str, note_kind: str) -> Path:
     """DELEGATED TO THE `myvault` SKILL.
 
@@ -97,7 +105,7 @@ def main() -> int:
         if not src_file.is_file():
             print(f"ERROR: missing source file {src_file}", file=sys.stderr)
             return 1
-        body = rewrite_links(src_file.read_text())
+        body = fix_link_breaks(rewrite_links(src_file.read_text()))
 
         # SAFETY: back up any existing target before it gets overwritten, then delete it
         # (create refuses to overwrite). This is what makes re-runs non-destructive.

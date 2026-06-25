@@ -61,6 +61,11 @@ than letting one note sprawl.
 
 - Open with a one-line orienting sentence so the reader knows where they are.
 - Distil, don't copy-paste — this is the readable companion, not a verbatim dump.
+- **Do NOT hard-wrap prose.** Write each paragraph and list-item as a **single unwrapped line**;
+  let Obsidian soft-wrap. Fixed-width wrapping is a plain-text/code habit that is wrong here: the
+  hard breaks buy nothing in Obsidian, and a wrap that lands inside a `[[wikilink]]` **breaks the
+  link** (wikilinks must be on one line). (Hard breaks are fine only where the format needs them —
+  blank lines between blocks, list items, table rows, fenced code/SVG.)
 - **Inline visualizations** where they aid understanding (see "Visualizations" below).
 - End every note with a **navigation footer** using local-slug wikilinks:
   `[[index|↑ Index]] · ← [[03_prev|03 · Prev]] · next → [[05_next|05 · Next]]`

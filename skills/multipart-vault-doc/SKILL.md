@@ -166,8 +166,14 @@ which is durable.) Treat unanswered points as tacit agreement only if the user s
 **Wiring the dialogue (scripted, with backups):**
 
 1. Create a **response pad** — a *separate, durable* note (NOT one of the generated set, so the
-   publish script never regenerates it). One block per answer, each ending in a block id
-   `^cl-<key>` and opening with a back-link `[[<source note>#^lk-<key>|↑ comment]]`.
+   publish script never regenerates it). **Each answer gets its own `## H2 heading`** (a short
+   descriptor, e.g. `## cl-10c · live remote API nodes`), and the answer underneath may be **fully
+   structured** — multiple paragraphs, lists, code blocks — NOT a single cramped paragraph
+   (readability matters; the heading also gives the pad a navigable outline). Directly under the
+   heading put the back-link line carrying the block id —
+   `[[<source note>#^lk-<key>|↑ comment]] ^cl-<key>` — so the comment's forward link lands at the
+   top of the section. Then the structured response body. (Author **unwrapped** — one line per
+   paragraph — per the no-hard-wrap rule.)
 2. Tag each source comment in place: append a forward link + block id —
    `… [[<response pad>#^cl-<key>|↳ response]] ^lk-<key>`. The block id must be **last** on the
    line. Derive stable keys from the note number + occurrence (e.g. `lk-08a`, `lk-p4`).

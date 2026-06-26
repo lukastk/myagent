@@ -10,14 +10,17 @@ description: Use the `gog` CLI to interact with Google services — Gmail, Calen
 | `lukas.kikuchi@gmail.com` | Personal | `default` |
 | `kikuchi.lukas@gmail.com` | Autonomy work | `default` |
 | `lukas@jackfruiting.com` | Jackfruit work (Google Workspace) | `default` |
+| `jimmy.botjangles@gmail.com` | Specialised agent account | `default` |
 
 `kikuchi.lukas@gmail.com` is the Gmail inbox linked to the user's **Autonomy** work identity `lukas@autonomy.work` (mail to `lukas@autonomy.work` is aliased into it) — use it for anything Autonomy-related. `lukas@jackfruiting.com` is the user's **Jackfruit** startup, a Google Workspace account — use it for anything Jackfruit-related.
 
-All three accounts use the default OAuth client. Tokens are already authorized and stored on all machines.
+`jimmy.botjangles@gmail.com` is a **specialised account reserved for agent use**. **Do NOT use it unless Lukas has explicitly authorized it for the task at hand** — never pick it as a default, and never act on it on your own initiative.
+
+All four accounts use the default OAuth client. Tokens are already authorized and stored on all machines.
 
 **Authorized services (differ by account):**
 - `lukas.kikuchi@gmail.com`, `kikuchi.lukas@gmail.com`: `gmail`, `calendar`, `drive`, `docs`, `sheets`.
-- `lukas@jackfruiting.com`: all 10 user-OAuth services — `gmail`, `calendar`, `drive`, `docs`, `sheets`, `chat`, `contacts`, `tasks`, `people`, `classroom`.
+- `lukas@jackfruiting.com`, `jimmy.botjangles@gmail.com`: all 10 user-OAuth services — `gmail`, `calendar`, `drive`, `docs`, `sheets`, `chat`, `contacts`, `tasks`, `people`, `classroom`.
 
 The CLI also exposes `slides`, `groups`, and `keep`, but those scopes are **not** authorized on any account — calling them fails until you re-auth with a wider `--services` list (see "Re-authenticating"). `groups` (Cloud Identity) and `keep` are Workspace-only — `keep` additionally needs a service account with domain-wide delegation — so they're only viable on `lukas@jackfruiting.com` if set up.
 
@@ -156,6 +159,7 @@ gog auth add <email> --services gmail,calendar,drive,docs,sheets --force-consent
 | Personal | `gog auth add lukas.kikuchi@gmail.com --services gmail,calendar,drive,docs,sheets --force-consent` |
 | Autonomy work | `gog auth add kikuchi.lukas@gmail.com --services gmail,calendar,drive,docs,sheets --force-consent` |
 | Jackfruit work | `gog auth add lukas@jackfruiting.com --services all --force-consent` |
+| Agent account | `gog auth add jimmy.botjangles@gmail.com --services all --force-consent` |
 
 This opens a browser for interactive OAuth consent. After re-authorizing, run `gog-auth-bootstrap-all` to distribute the new tokens to all machines.
 

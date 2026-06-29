@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRESENTATION_TITLE</title>
+<style>
+  /* ============================================================
+     THEME — edit these variables to restyle the whole deck.
+     ============================================================ */
+  :root {
+    --slide-w: 1280px;          /* logical slide width  (16:9) */
+    --slide-h: 720px;           /* logical slide height (16:9) */
+    --bg: #0f1117;              /* page background (letterbox) */
+    --slide-bg: #161a23;        /* slide surface */
+    --fg: #e8eaed;              /* body text */
+    --muted: #9aa3b2;           /* secondary text */
+    --accent: #5b8cff;          /* accent / links / rules */
+    --pad: 64px;                /* slide inner padding */
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font);
+    overflow: hidden;          /* the deck handles its own scroll */
+  }
+
+  /* The stage is the fixed-aspect canvas; JS scales it to fit the window. */
+  #stage {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: var(--slide-w);
+    height: var(--slide-h);
+    transform-origin: center center;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    background: var(--slide-bg);
+    display: none;
+    flex-direction: column;
+  }
+  .slide.active { display: flex; }
+
+  /* Scroll region: content is NEVER clipped — long slides get a y-scrollbar. */
+  .slide-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: var(--pad);
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) transparent;
+  }
+  .slide-content::-webkit-scrollbar { width: 10px; }
+  .slide-content::-webkit-scrollbar-thumb {
+    background: var(--accent); border-radius: 6px;
+  }
+
+  /* When JS detects overflow it adds this hint so the scrollability is visible. */
+  .slide.is-overflowing .slide-content {
+    border-right: 3px solid var(--accent);
+  }
+
+  /* ---- Typography defaults (tune per deck) ---- */
+  .slide h1 { font-size: 64px; line-height: 1.1; margin: 0 0 0.4em; }
+  .slide h2 { font-size: 44px; line-height: 1.15; margin: 0 0 0.5em; color: var(--accent); }
+  .slide h3 { font-size: 30px; margin: 0 0 0.4em; }
+  .slide p, .slide li { font-size: 28px; line-height: 1.45; }
+  .slide ul, .slide ol { margin: 0 0 0.6em; padding-left: 1.2em; }
+  .slide li { margin: 0.3em 0; }
+  .slide code { font-family: var(--mono); background: #00000040; padding: 0.1em 0.3em; border-radius: 4px; }
+  .slide pre { background: #00000050; padding: 20px; border-radius: 8px; overflow: auto; font-size: 22px; }
+  .slide a { color: var(--accent); }
+  .slide img { max-width: 100%; }
+  .muted { color: var(--muted); }
+
+  /* A centered title-slide variant: <section class="slide center"> */
+  .slide.center .slide-content {
+    align-items: center; justify-content: center; text-align: center;
+    display: flex; flex-direction: column;
+  }
+
+  /* ---- Chrome: progress bar + slide counter ---- */
+  #progress {
+    position: fixed; top: 0; left: 0; height: 4px;
+    background: var(--accent); width: 0; z-index: 10;
+    transition: width 0.2s ease;
+  }
+  #counter {
+    position: fixed; bottom: 14px; right: 18px; z-index: 10;
+    font: 500 14px/1 var(--font); color: var(--muted);
+    background: #00000060; padding: 6px 10px; border-radius: 999px;
+    user-select: none;
+  }
+
+  /* ---- Print / PDF export: one slide per page (Cmd/Ctrl-P → Save as PDF) ---- */
+  @media print {
+    @page { size: 1280px 720px; margin: 0; }
+    body { overflow: visible; background: #fff; }
+    #stage { position: static; width: auto; height: auto; transform: none !important; }
+    #progress, #counter { display: none; }
+    .slide {
+      position: static; display: flex !important;
+      width: 1280px; height: 720px;
+      page-break-after: always; break-after: page;
+    }
+    .slide-content { overflow: visible; }
+  }
+</style>
+</head>
+<body>
+  <div id="progress"></div>
+  <div id="counter"></div>
+
+  <div id="stage">
+    <!-- ============================================================
+         SLIDES. Each <section class="slide"> is one slide. Put all
+         content inside .slide-content so overflow scrolls instead of
+         being clipped. Duplicate a block to add slides.
+         ============================================================ -->
+
+    <section class="slide center">
+      <div class="slide-content">
+        <h1>Presentation Title</h1>
+        <p class="muted">Subtitle · Author · Date</p>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-content">
+        <h2>A content slide</h2>
+        <ul>
+          <li>First point</li>
+          <li>Second point</li>
+          <li>Third point</li>
+        </ul>
+      </div>
+    </section>
+
+  </div>
+
+<script>
+  /* ---- Scale the fixed-aspect stage to fit the window (letterboxed). ---- */
+  const stage = document.getElementById('stage');
+  function fit() {
+    const cs = getComputedStyle(document.documentElement);
+    const w = parseFloat(cs.getPropertyValue('--slide-w'));
+    const h = parseFloat(cs.getPropertyValue('--slide-h'));
+    const scale = Math.min(window.innerWidth / w, window.innerHeight / h);
+    stage.style.transform = `translate(-50%, -50%) scale(${scale})`;
+  }
+  window.addEventListener('resize', fit);
+  fit();
+
+  /* ---- Navigation ---- */
+  const slides = [...document.querySelectorAll('.slide')];
+  const progress = document.getElementById('progress');
+  const counter = document.getElementById('counter');
+  let i = 0;
+
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, k) => s.classList.toggle('active', k === i));
+    progress.style.width = ((i + 1) / slides.length * 100) + '%';
+    counter.textContent = `${i + 1} / ${slides.length}`;
+    location.hash = i + 1;
+    flagOverflow();
+  }
+  function next() { show(i + 1); }
+  function prev() { show(i - 1); }
+  window.show = show;   // exposed so external tooling can drive navigation
+
+  document.addEventListener('keydown', (e) => {
+    if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { next(); e.preventDefault(); }
+    else if (['ArrowLeft', 'PageUp'].includes(e.key)) { prev(); e.preventDefault(); }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(slides.length - 1);
+  });
+  // Click right/left third of screen to advance/go-back (ignore clicks on links/scrollbars).
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('a, .slide-content')) {
+      // allow text selection / link clicks; only the gutter navigates
+    }
+    if (e.clientX > window.innerWidth * 0.7) next();
+    else if (e.clientX < window.innerWidth * 0.3) prev();
+  });
+
+  /* ---- Overflow detection ----
+     The scroll region never clips content, so overflowing slides are
+     usable (they scroll). This flags them so you can decide whether to
+     split/trim. Call window.slideOverflow() to get a report. */
+  function flagOverflow() {
+    slides.forEach((s) => {
+      const c = s.querySelector('.slide-content');
+      const over = c.scrollHeight - c.clientHeight > 2;
+      s.classList.toggle('is-overflowing', over);
+    });
+  }
+  window.slideOverflow = function () {
+    return slides.map((s, k) => {
+      const c = s.querySelector('.slide-content');
+      return {
+        index: k + 1,
+        overflowing: c.scrollHeight - c.clientHeight > 2,
+        scrollHeight: c.scrollHeight,
+        clientHeight: c.clientHeight,
+      };
+    }).filter(r => r.overflowing);
+  };
+
+  // Open at #N if present.
+  const start = parseInt(location.hash.slice(1), 10);
+  show(Number.isFinite(start) && start > 0 ? start - 1 : 0);
+  // Re-flag once everything (fonts/images) has settled.
+  window.addEventListener('load', flagOverflow);
+</script>
+</body>
+</html>

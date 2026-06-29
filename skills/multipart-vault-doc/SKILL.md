@@ -123,7 +123,7 @@ plugin is the fallback. It keeps periodic snapshots in a leveldb at
 `~/.config/obsidian/IndexedDB/app_obsidian.md_*.leveldb` — work on a **copy**, never the live DB.
 Note **content is stored UTF-16LE** (path-keys are ASCII), so decode with both byte parities
 (`raw.decode('utf-16-le','replace')` and `raw[1:]...`) and grep for the user's distinctive text
-(e.g. `==`, `LUKAS`). Reconstruct a note by slicing from its stable `# NN · Heading` to its
+(e.g. `- [d] me`, `[!me]`). Reconstruct a note by slicing from its stable `# NN · Heading` to its
 `↑ Index]]` footer, then diff (normalizing `[[wikilinks]]`) against the current version to isolate
 their additions.
 
@@ -132,53 +132,71 @@ their additions.
 Lukas reads and annotates in the vault. Run a **bidirectional margin dialogue** so each of his
 comments and your response link to each other via Obsidian **block references**.
 
-**Comment markup — use callouts.** Comments are written as **callouts**, not `==highlight==`:
+**Comment markup — a mysystem module-task + callout.** Lukas marks each query as a mysystem
+**module task** `- [d] me` immediately followed by a `> [!me]` callout holding the comment:
 
 ```md
-> [!lukas] short title
+- [d] me
+> [!me]
 > The comment — can span multiple paragraphs, lists, code blocks.
 ```
 
-Callouts are block-level (multi-line, lists, code all work), visually scannable, collapsible
-(`> [!lukas]-`), trivially greppable (`grep -i '\[!lukas\]'`), and block-referenceable, so the
-harvester reads `> [!lukas]` (and optionally `[!q]` question / `[!idea]` suggestion) as the
-**primary marker — and MUST match case-insensitively** (users write `[!Lukas]`, `[!LUKAS]`, etc.;
-a case-sensitive harvest silently misses comments). Callouts are multi-line: capture the whole
-block (the `[!lukas]` line plus following `>` lines), not just the first line.
-primary marker. `==LUKAS: …==` highlights are only a fallback for a quick mid-sentence note (a
-list inside a highlight breaks). A custom callout type renders fine un-styled; an optional CSS
-snippet in `.obsidian/snippets/` can give `[!lukas]`/`[!q]`/`[!idea]` a distinct colour + icon
-(target `.callout[data-callout="lukas"]` with `--callout-color` / `--callout-icon`, and enable it
-in `.obsidian/appearance.json`'s `enabledCssSnippets`).
+The `- [d]` is a mysystem **module task** (it toggles `- [d]` ⇄ `- [A]`). The `- [d] me` line is
+the canonical, greppable marker: **harvest with `grep -rn -- "- \[d\] me"`** across the generated
+notes. The `> [!me]` callout is block-level (multi-line, lists, code all work), scannable,
+collapsible (`> [!me]-`), and block-referenceable — capture the whole callout (the `[!me]` line
+plus following `>` lines), not just the first line. Match `me` case-insensitively.
 
-When wiring the dialogue, the comment's block id and `↳ response` link go on a non-quoted line
-**directly after** the callout (a callout is one block; the trailing `^id` references it).
+**Your responses** are written as `> [!agent]` callouts, each **preceded by a `- [d] agent`
+module-task line** (so Lukas can tick it `- [A]` once he's read your answer) — and they live in
+the Claude responses pad, never inline (see below):
+
+```md
+- [d] agent
+> [!agent]
+> Your response — may be fully structured (paragraphs, lists, code) via `>` continuation.
+```
+
+**After answering a comment, tick its source task** `- [d] me` → `- [A] me` in the generated note,
+so handled queries are visibly done. The comment's block id and `↳ response` link go on a
+non-quoted line **directly after** the callout (a callout is one block; the trailing `^id`
+references it). An optional CSS snippet in `.obsidian/snippets/` can give `[!me]`/`[!agent]` a
+distinct colour + icon (target `.callout[data-callout="me"]` / `[data-callout="agent"]` with
+`--callout-color` / `--callout-icon`, enabled in `.obsidian/appearance.json`'s `enabledCssSnippets`).
 
 **ALL responses go in the Claude responses pad — never inline in the generated notes.** This is a
-firm rule. Wherever the user's comments live (inline `[!lukas]` callouts across the notes, or a
+firm rule. Wherever the user's comments live (`- [d] me` + `[!me]` callouts across the notes, or a
 "my notes" pad), gather **every** answer into the single durable `… - Claude responses` pad and
-cross-link with block refs. **Do NOT reply inline with `[!claude]` callouts in the generated
+cross-link with block refs. **Do NOT reply inline with `[!agent]` callouts in the generated
 notes** — those notes get regenerated for the next version, so any inline reply is silently lost;
 the responses pad survives, keeps the whole dialogue in one readable place, and stays consistent
-across rounds. (Inline `[!claude]` threading is acceptable *only within the responses pad itself*,
-which is durable.) Treat unanswered points as tacit agreement only if the user says so.
+across rounds. (Inline `[!agent]` threading is acceptable *only within the responses pad itself*,
+which is durable.) Ticking the source `- [d] me` task is the in-note signal that a query is
+handled; the full answer lives in the pad. Treat unanswered points as tacit agreement only if the
+user says so.
 
 **Wiring the dialogue (scripted, with backups):**
 
 1. Create a **response pad** — a *separate, durable* note (NOT one of the generated set, so the
-   publish script never regenerates it). **Each answer gets its own `## H2 heading`** (a short
+   publish script never regenerates it). Parent it to the Ideation chronology **and add a numbered
+   entry for it in the chronology body** — parenting alone is not enough; the chronology's numbered
+   list is the index, so every project pad you create (response pad included) gets a line there in
+   the same step you create it. **Each answer gets its own `## H2 heading`** (a short
    descriptor, e.g. `## cl-10c · live remote API nodes`), and the answer underneath may be **fully
    structured** — multiple paragraphs, lists, code blocks — NOT a single cramped paragraph
    (readability matters; the heading also gives the pad a navigable outline). Directly under the
    heading put the back-link line carrying the block id —
    `[[<source note>#^lk-<key>|↑ comment]] ^cl-<key>` — so the comment's forward link lands at the
-   top of the section. Then the structured response body. (Author **unwrapped** — one line per
-   paragraph — per the no-hard-wrap rule.)
-2. Tag each source comment in place: append a forward link + block id —
-   `… [[<response pad>#^cl-<key>|↳ response]] ^lk-<key>`. The block id must be **last** on the
-   line. Derive stable keys from the note number + occurrence (e.g. `lk-08a`, `lk-p4`).
-3. Do the tagging with a script that **backs up each file first** and is idempotent (skip lines
-   already carrying `^lk-`).
+   top of the section. Then the response as a `- [d] agent` task line followed by a `> [!agent]`
+   callout (which may be **fully structured** — multiple paragraphs, lists, code via `>`
+   continuation — NOT a single cramped line). (Author **unwrapped** — one line per paragraph —
+   per the no-hard-wrap rule.)
+2. Tag each source comment in place, and **tick its task**: change `- [d] me` → `- [A] me`, and
+   append a forward link + block id on a non-quoted line directly after the callout —
+   `[[<response pad>#^cl-<key>|↳ response]] ^lk-<key>`. The block id must be **last** on the line.
+   Derive stable keys from the note number + occurrence (e.g. `lk-08a`, `lk-p4`).
+3. Do the tagging/ticking with a script that **backs up each file first** and is idempotent (skip
+   comments already carrying `^lk-` / already ticked `- [A] me`).
 4. **Verify both directions**: every `#^cl-…` referenced from a comment resolves to a block in the
    response pad, and every `#^lk-…` referenced from the response pad resolves to a tagged comment
    (a quick Python set-diff; mind filenames with spaces — glob in Python, don't word-split in sh).
@@ -200,7 +218,9 @@ regenerated); the fastest "what exists / where are we" index for the project.
 
 **Parenting rules (myvault):**
 - Every pad *you* create for the project is parented to the Ideation chronology
-  (`parents: ["[[<Project> - Ideation chronology]]"]`).
+  (`parents: ["[[<Project> - Ideation chronology]]"]`) **and added as a numbered line in the
+  chronology body**. Both are required — setting the frontmatter parent does NOT put it in the
+  index; the numbered list is the index. Do it in the same step you create the pad.
 - The Ideation chronology's *own* parent is not assumed — **ask the user** which note it should be
   (typically the project's `mod/` note) and set that.
 

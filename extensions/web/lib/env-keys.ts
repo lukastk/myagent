@@ -8,13 +8,15 @@ const ENV_KEY_MAP: Record<string, string | string[]> = {
 	exa: "EXA_API_KEY",
 	tavily: "TAVILY_API_KEY",
 	perplexity: "PERPLEXITY_API_KEY",
-	anthropic: "ANTHROPIC_API_KEY",
+	// ANTHROPIC_API_KEY / OPENAI_API_KEY are stored in ~/.env under MY_-prefixed
+	// names (so they aren't auto-picked-up by Claude Code / Codex); accept either.
+	anthropic: ["ANTHROPIC_API_KEY", "MY_ANTHROPIC_API_KEY"],
 	jina: "JINA_API_KEY",
 	kimi: ["KIMI_SEARCH_API_KEY", "MOONSHOT_SEARCH_API_KEY"],
 	google: "GEMINI_API_KEY",
 	gemini: "GEMINI_API_KEY",
-	openai: "OPENAI_API_KEY",
-	"openai-codex": "OPENAI_API_KEY",
+	openai: ["OPENAI_API_KEY", "MY_OPENAI_API_KEY"],
+	"openai-codex": ["OPENAI_API_KEY", "MY_OPENAI_API_KEY"],
 	zai: "ZAI_API_KEY",
 	parallel: "PARALLEL_API_KEY",
 	kagi: "KAGI_API_KEY",

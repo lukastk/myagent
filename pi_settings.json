@@ -15,6 +15,9 @@
     "moonshotai/kimi-k2.6",
     "openai-codex/gpt-5.3-codex",
     "openai-codex/gpt-5.5",
-    "openrouter/qwen/qwen3.6-max-preview"
+    "openrouter/qwen/qwen3.6-max-preview",
+    "privatemode/gemma-4-31b",
+    "privatemode/gpt-oss-120b",
+    "privatemode/kimi-k2.6"
   ]
 }

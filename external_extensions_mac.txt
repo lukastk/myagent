@@ -1,4 +1,3 @@
 # macOS-only Pi extensions
 # One per line. Lines starting with # are comments.
 
-git:github.com/injaneity/pi-computer-use

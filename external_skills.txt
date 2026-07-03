@@ -9,3 +9,4 @@ lukastk/appgarden@appgarden
 lukastk/mysystem@myvault
 lukastk/sesh@sesh-cli
 lukastk/sesh@do-tickets
+lukastk/mysrs@mysrs-cards

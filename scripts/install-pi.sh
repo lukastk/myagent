@@ -621,7 +621,14 @@ else
         [ -z "$line" ] && continue
 
         echo "    $line"
-        npx -y skills add "$line" -g -y
+        # Explicit --agent list: without it, the skills CLI's -y path force-adds
+        # every .agents/skills-family agent, including PromptScript, which is
+        # project-only and fails every global install with
+        # "PromptScript does not support global skill installation".
+        # codex keeps the universal ~/.agents/skills copy; claude-code and pi
+        # get their symlinks — identical to the old behavior minus the failure.
+        # (The flag must be repeated; -a a,b,c is parsed as one agent name.)
+        npx -y skills add "$line" -g -y -a codex -a claude-code -a pi
         ensure_state_line "$SKILL_STATE_FILE" "$line"
     done 3< "$tmp_external_skills"
 fi

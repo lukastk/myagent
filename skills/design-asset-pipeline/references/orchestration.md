@@ -94,7 +94,7 @@ helps. Check at small + large sizes and on paper + ink.
 ```bash
 sesh thread send --id <id> --text "Verification found a defect: <precise description + the
 proof that shows it>. Fix <file> so <criterion>, then re-render <proof> and confirm by looking.
-Re-run the svelte autofixer. Report when re-verified."
+Re-run the svelte autofixer (if the project has one configured). Report when re-verified."
 ```
 
 Re-arm `watch.sh` on that id. This is why workers are long-lived threads, not one-shot

@@ -72,7 +72,7 @@ adb forward tcp:9222 localabstract:webview_devtools_remote_${PID}
 curl -s http://localhost:9222/json | python3 -c "import sys,json;[print(p['type'],p.get('title','')[:40],p.get('webSocketDebuggerUrl','')) for p in json.load(sys.stdin)]"
 
 # 3. Eval JS with the helper (Node 24+, uses the global WebSocket):
-node "$(dirname "$0")/cdp-eval.mjs" "app.vault.getName()"
+node cdp-eval.mjs "app.vault.getName()"
 node cdp-eval.mjs "({hasMs: typeof globalThis.ms, notes: [...ms.vault.cache.activeEntries()].length})"
 node cdp-eval.mjs "(async()=>{ /* any async expr; result is awaited + JSON-returned */ })()"
 ```

@@ -85,9 +85,9 @@ Pass `--prune` to forward it to both. Pass `--pi-only` or `--claude-only` to ski
 5. Shallow-merges `pi_settings.json` onto `~/.pi/agent/settings.json` (our keys win, runtime keys preserved — see "Pi settings" below).
 6. Symlinks `mcp.json` to `~/.config/mcp/mcp.json` and `~/.pi/agent/mcp.json`.
 7. Runs `scripts/configure-pi-tool-binaries.sh` to configure Pi tool binaries.
-8. Installs Playwright MCP (patched): persistently installs `@playwright/mcp` into `~/.local/playwright-mcp` and applies three patches — `crBrowser.js` (skip `Browser.setDownloadBehavior`, for the CDP-connect/opt-out path), `chromiumSwitches.js` (drop `--use-mock-keychain`/`--password-store=basic` so a Brave that Playwright *launches* can decrypt the seeded profile's cookies), and the `browser_close` tool description in `playwright-core` (upstream ships "Close the page", which misled agents into thinking it only closes a tab and leaving the per-agent Brave resident all session; it actually disposes the whole browser process, so the patched text tells agents to close it when done). Also symlinks the `brave-cdp-mcp` launcher (from `scripts/brave-cdp/`) next to that install. (The `playwright` server in `mcp.json` runs that launcher — see "Per-agent isolated Brave" below.)
+8. Installs Playwright MCP (patched): persistently installs `@playwright/mcp` into `~/.local/playwright-mcp` and applies three patches — a `Browser.setDownloadBehavior` skip (all platforms, for the CDP-connect/opt-out path), a Chromium-switches patch (**macOS only** — drop `--use-mock-keychain`/`--password-store=basic` so a Brave that Playwright *launches* can decrypt the seeded profile's cookies; skipped on Linux, where the launcher connects rather than launches), and the `browser_close` tool description (all platforms; upstream ships "Close the page", which misled agents into thinking it only closes a tab and leaving the per-agent Brave resident all session; it actually disposes the whole browser process, so the patched text tells agents to close it when done). The installer locates each patch target by string search, since current playwright-core (≥1.61) bundles these into `lib/coreBundle.js` (formerly the separate `crBrowser.js` / `chromiumSwitches.js`). Also symlinks the `brave-cdp-mcp` launcher (from `scripts/brave-cdp/`) next to that install. (The `playwright` server in `mcp.json` runs that launcher — see "Per-agent isolated Brave" below.)
 9. Reads `external_extensions.txt` (+ `external_extensions_mac.txt` on macOS) and runs `pi install <source>`.
-10. Reads `external_skills.txt` and runs `npx -y skills add <source> -g -y`.
+10. Reads `external_skills.txt` and runs `npx -y skills add <source> -g -y -a codex -a claude-code -a pi`. The explicit `-a` agent list (repeated per agent — a comma-joined value is parsed as one invalid name) stops the skills CLI's `-y` fast path from force-adding every skills-family agent, including project-only PromptScript, which would otherwise fail every global install.
 11. With `--prune`, removes stale local symlinks and reconciles installed extensions/skills against what's declared:
     - **External extensions** are reconciled against the declared set (`external_extensions.txt`, plus `external_extensions_mac.txt` only on macOS): it iterates `pi list` (what Pi actually has) and `pi remove`s anything not declared — including orphans myagent never installed itself. This is *platform-strict*: a mac-only extension installed on Linux is removed there. There is intentionally no extension state file (a record of "what we installed" can't see orphans — that's how `pi-slopchop` survived a prior prune); the prune deletes the legacy `.install-state/external_extensions.txt` if present.
     - **External skills** still use the `.install-state/external_skills.txt` record and only remove skills myagent previously installed (global skills are a shared namespace, so reconcile-to-declared would be too aggressive).
@@ -101,6 +101,19 @@ After running install, reload Pi with `/reload` if it's running.
 4. With `--prune`, removes Claude skill symlinks and MCP servers it previously installed but are no longer listed.
 
 Restart Claude Code to pick up new skills/MCP servers.
+
+## Local extensions
+
+The extensions that ship in this repo (each under `extensions/<name>/`; see the per-folder `README.md` / `index.ts` header for detail):
+
+- **agents-local** — appends a project's `AGENTS.local.md` (personal, uncommitted notes) to the system prompt when one is found alongside `AGENTS.md`.
+- **compact-tools** — compact tool-call rendering plus a keyboard-driven split-pane tool-output viewer (`README.md`).
+- **hooks** — Claude Code / Codex–style lifecycle hooks: shell commands run on Pi events (from `hooks.json`), able to block or modify the event (`README.md`).
+- **message-barrel** — save draft messages into a barrel and paste them back into the input editor later (`README.md`).
+- **pi-hashline-edit** — replaces the built-in `read`/`edit` tools with a hash-anchored line-editing workflow that rejects stale edits (`README.md`).
+- **privatemode** — registers PrivateMode AI (E2E-encrypted confidential computing) as an OpenAI-compatible provider, auto-starting its local podman proxy on demand.
+- **session-model** — session-only model switching: `/smodel`, `/smodel-scope`, and cycle shortcuts.
+- **web** — three tools — web search, URL fetch (with site-specific scrapers), and browser automation; transplanted from oh-my-pi (`README.md`).
 
 ## How to write a new extension
 
@@ -358,7 +371,7 @@ MCP server definitions live in `mcp.json` at the repo root. This file is symlink
 
 The `pi-mcp-adapter` extension (listed in `external_extensions.txt`) reads this config and bridges MCP tools into Pi. Servers are lazy — they spawn on first tool use and auto-disconnect after idle timeout.
 
-A server entry may set `"directTools": true` (e.g. the `playwright` server does) to promote that server's tools to **direct Pi tools** rather than routing them through the on-demand discovery proxy — they show up as first-class tools without a `/mcp` promote step. This field is Pi-specific: `scripts/install-claude.sh` builds the Claude payload from a whitelist (`command`/`args`/`cwd`/`env`), so `directTools` is naturally dropped for Claude Code.
+A server entry may set `"directTools": true` (e.g. the `playwright` server does) to promote that server's tools to **direct Pi tools** rather than routing them through the on-demand discovery proxy — they show up as first-class tools without a `/mcp` promote step. This field is Pi-specific: `scripts/install-claude.sh` builds the Claude payload from a whitelist (`command`/`args`/`cwd`/`env` for stdio servers, or `type`/`url`/`transport`/`headers` for url-based remote servers), so `directTools` is naturally dropped for Claude Code.
 
 The `playwright` server is special-cased: instead of an `npx`-spawned server, it runs the `brave-cdp-mcp` launcher in the patched persistent install at `~/.local/playwright-mcp` (`command: bash`, `args: ["brave-cdp-mcp"]`, `cwd: ~/.local/playwright-mcp`) that `scripts/install-pi.sh` creates, patches, and links the launcher into. See the "Per-agent isolated Brave" section below and the install-pi.sh step above.
 

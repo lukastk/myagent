@@ -137,8 +137,8 @@ Keep that home clean too: one generator per family, proofs alongside, true-vecto
   doc), so parallel work composes and is recreatable.
 - **Keep it clean:** ideation/process under `_dev/` subfolders; final assets in their real
   home.
-- Validate any `.svelte` with the Svelte autofixer MCP; always include a 3×3 montage as a
-  seamlessness proof for tilings.
+- Validate any `.svelte` with the Svelte autofixer MCP (if the project has one configured);
+  always include a 3×3 montage as a seamlessness proof for tilings.
 
 ## When to use / not use
 

@@ -105,7 +105,8 @@ on the metadata; Drive then runs its markdown importer. The pattern,
 reusing gog's stored refresh token:
 
 ```python
-import io, json, subprocess
+import io, json, subprocess, sys
+from pathlib import Path
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -115,8 +116,12 @@ from googleapiclient.http import MediaIoBaseUpload
 subprocess.run(["gog", "auth", "tokens", "export", "<email>",
                 "--out", "/tmp/_t.json", "--overwrite"], check=True)
 cache = json.load(open("/tmp/_t.json"))
-client = json.load(open(
-    "/Users/lukas/Library/Application Support/gogcli/credentials.json"))
+# gog's config root is platform-specific — macOS: ~/Library/Application Support/gogcli/,
+# Linux: ~/.config/gogcli/. credentials.json (the OAuth client) only exists on the
+# machine where OAuth consent was first set up; copy it over if it's missing.
+gog_config = (Path.home() / "Library/Application Support/gogcli") \
+    if sys.platform == "darwin" else (Path.home() / ".config/gogcli")
+client = json.load(open(gog_config / "credentials.json"))
 creds = Credentials(
     token=None, refresh_token=cache["refresh_token"],
     token_uri="https://oauth2.googleapis.com/token",
@@ -165,7 +170,7 @@ This opens a browser for interactive OAuth consent. After re-authorizing, run `g
 
 ## Machine targets
 
-Gog is available on all three machines:
+Gog is available on all machines:
 
 | Machine | SSH |
 |---|---|

@@ -147,12 +147,12 @@ notes. The `> [!me]` callout is block-level (multi-line, lists, code all work), 
 collapsible (`> [!me]-`), and block-referenceable — capture the whole callout (the `[!me]` line
 plus following `>` lines), not just the first line. Match `me` case-insensitively.
 
-**Your responses** are written as `> [!agent]` callouts, each **preceded by a `- [d] agent`
-module-task line** (so Lukas can tick it `- [A]` once he's read your answer) — and they live in
-the Claude responses pad, never inline (see below):
+**Your responses** are written as `> [!agent]` callouts — **with NO task-line prefix** (Lukas
+retired the `- [d] agent` convention on 2026-07-06; do not add `- [d]`/`- [A]` lines to your own
+responses). In multipart-doc review rounds they live in the Claude responses pad (see below);
+when Lukas explicitly asks for inline dialogue in a durable pad, reply inline the same way:
 
 ```md
-- [d] agent
 > [!agent]
 > Your response — may be fully structured (paragraphs, lists, code) via `>` continuation.
 ```
@@ -187,8 +187,8 @@ user says so.
    (readability matters; the heading also gives the pad a navigable outline). Directly under the
    heading put the back-link line carrying the block id —
    `[[<source note>#^lk-<key>|↑ comment]] ^cl-<key>` — so the comment's forward link lands at the
-   top of the section. Then the response as a `- [d] agent` task line followed by a `> [!agent]`
-   callout (which may be **fully structured** — multiple paragraphs, lists, code via `>`
+   top of the section. Then the response as a `> [!agent]` callout — no task-line prefix —
+   (which may be **fully structured** — multiple paragraphs, lists, code via `>`
    continuation — NOT a single cramped line). (Author **unwrapped** — one line per paragraph —
    per the no-hard-wrap rule.)
 2. Tag each source comment in place, and **tick its task**: change `- [d] me` → `- [A] me`, and

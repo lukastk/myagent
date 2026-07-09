@@ -141,11 +141,17 @@ comments and your response link to each other via Obsidian **block references**.
 > The comment — can span multiple paragraphs, lists, code blocks.
 ```
 
-The `- [d]` is a mysystem **module task** (it toggles `- [d]` ⇄ `- [A]`). The `- [d] me` line is
+The `- [d]` is a mysystem **module task** (it toggles `- [d]` ⇄ `- [A]`); the full task-symbol
+legend lives in `mysystem/src/task-config.ts`. The `- [d] me` line is
 the canonical, greppable marker: **harvest with `grep -rn -- "- \[d\] me"`** across the generated
 notes. The `> [!me]` callout is block-level (multi-line, lists, code all work), scannable,
 collapsible (`> [!me]-`), and block-referenceable — capture the whole callout (the `[!me]` line
 plus following `>` lines), not just the first line. Match `me` case-insensitively.
+
+**Any other todo item you write should be an untracked task `- [+]`, never a regular `- [ ]`.**
+Unless Lukas explicitly asks for a *tracked* task, write todos as untracked (`- [+]`) — regular
+`- [ ]` tasks flow into his real tracked task system and would overflow it. Untracked toggling:
+`- [+]` (todo) → `- [P]` (done) → `- [p]` (skipped). Full legend in `mysystem/src/task-config.ts`.
 
 **Your responses** are written as `> [!agent]` callouts — **with NO task-line prefix** (Lukas
 retired the `- [d] agent` convention on 2026-07-06; do not add `- [d]`/`- [A]` lines to your own

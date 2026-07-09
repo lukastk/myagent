@@ -80,6 +80,52 @@ gog --account lukas.kikuchi@gmail.com sheets append <spreadsheetId> '<range>' va
 
 To create a native Google Doc from a `.md` file, see "Uploading markdown as a native Google Doc" below (`drive upload` does **not** convert).
 
+## Default Drive upload target: the Share folder
+
+When Lukas asks to **upload a file to Drive** for one of his accounts and does
+**not** specify a destination, default to uploading it into that account's
+**Share** folder.
+
+- **One file** → upload directly into the account's Share folder.
+- **Several files** → create a subfolder inside Share
+  (`drive mkdir <name> --parent <shareFolderId>`) and upload the files into it
+  (`--parent <newSubfolderId>`).
+
+**Naming convention (Share folder only):** unless Lukas gives a name, prepend the
+uploaded file's / subfolder's name with `YYYY-MM-DD_` of the current date — e.g.
+`2026-07-09_report.pdf`, or a subfolder `2026-07-09_screenshots/`. Use
+`--name` on `drive upload` to set it. This date-prefix convention applies **only**
+to things going into the Share folder, not to uploads elsewhere.
+
+**"Share" is only the folder's name — it does NOT mean make the file public.**
+Do not touch the file's sharing or permissions. Placing a file in Share does not
+grant anyone-with-link or public access, and you must not add any. Leave
+permissions exactly as Drive sets them by default, unless Lukas explicitly asks
+to share the file.
+
+| Account | Share folder ID |
+|---|---|
+| `kikuchi.lukas@gmail.com` (Autonomy) | `1R3KtS1kAgt3_6Eo5Y5G9xC7FAAoXnKc8` |
+| `lukas.kikuchi@gmail.com` (Personal) | `0B4Vd1jCrq3XkdWVaUkVvekpHUWs` |
+| `lukas@jackfruiting.com` (Jackfruit) | `1PViWr8ThjDhHS5BtbP83LS-BfzpwlxWM` |
+| `jimmy.botjangles@gmail.com` (Agent) | `1pmcKG9sxWoJsdmSyDaq13qYL_zwdQADD` |
+
+(The `lukas.kikuchi@gmail.com` folder is a legacy Drive ID; its share URL carries
+a `resourceKey`, but the plain folder ID above works for owner uploads via `gog`
+— no resourceKey needed.)
+
+```bash
+# Single file → Share folder, date-prefixed
+gog --account kikuchi.lukas@gmail.com drive upload ./report.pdf \
+  --parent 1R3KtS1kAgt3_6Eo5Y5G9xC7FAAoXnKc8 --name 2026-07-09_report.pdf
+
+# Several files → dated subfolder inside Share (mkdir returns the new folder's id)
+sub=$(gog --account kikuchi.lukas@gmail.com drive mkdir 2026-07-09_exports \
+  --parent 1R3KtS1kAgt3_6Eo5Y5G9xC7FAAoXnKc8 --json | jq -r .id)
+gog --account kikuchi.lukas@gmail.com drive upload ./a.csv --parent "$sub"
+gog --account kikuchi.lukas@gmail.com drive upload ./b.csv --parent "$sub"
+```
+
 ## Known folder IDs
 
 These are folders Lukas has pointed to in past sessions. Use these

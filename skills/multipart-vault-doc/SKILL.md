@@ -152,6 +152,10 @@ This replaces the pre-2026-07-11 convention of a separate "Claude responses pad"
 block-ref wiring for new review rounds.** Old doc sets may still carry the legacy markup — leave
 it as-is; only new dialogue uses threads.
 
+**Referring to a specific comment** (across part-notes, in commit messages, tickets): use the
+ref convention `<thread-id>#<n>` (1-based position in the thread), note-qualified as
+`[[<part-note>]]::9f3a#2`. `list-comments` prints each comment's ref.
+
 **Sweep the whole set.** Comments can sit in any part-note plus the index/TOC note. Run
 `list-comments` over every note of the set (or use the vault-wide Comment Inbox) and finish the
 round only when **no thread anywhere in the set is "your turn"**.

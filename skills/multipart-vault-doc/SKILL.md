@@ -127,91 +127,46 @@ Note **content is stored UTF-16LE** (path-keys are ASCII), so decode with both b
 `↑ Index]]` footer, then diff (normalizing `[[wikilinks]]`) against the current version to isolate
 their additions.
 
-## Review loop: comments ↔ responses
+## Review loop: comment threads
 
-Lukas reads and annotates in the vault. Run a **bidirectional margin dialogue** so each of his
-comments and your response link to each other via Obsidian **block references**.
+Lukas reads and annotates in the vault using **comment threads** — the mysystem-wide convention
+(full grammar, CLI verbs, and tick etiquette live in the **`myvault` skill, "Comment threads"
+section**; read that first). In short: comments are `> [!me]` / `> [!agent]` callouts; a thread
+head carries `t:<id>` in the callout metadata (`> [!me|t:9f3a]`); id-less comment callouts
+directly below belong to the thread; a `✓` metadata token means the comment is TICKED (addressed).
 
-**Comment markup — a mysystem module-task + callout.** Lukas marks each query as a mysystem
-**module task** `- [d] me` immediately followed by a `> [!me]` callout holding the comment:
+**Respond IN-THREAD, inline in the note.** Reply to each of Lukas's comments as an `agent`
+comment in the same thread, then tick the comment you addressed — never your own:
 
-```md
-- [d] me
-> [!me]
-> The comment — can span multiple paragraphs, lists, code blocks.
+```bash
+# What do I owe a response to? (threads with turn: "you")
+mysystem --vault "$OBAKO_VAULT_PATH" cmds list-comments "<note>" --json
+
+# Reply in-thread, then tick the comment you answered (line from list-comments)
+mysystem --vault "$OBAKO_VAULT_PATH" cmds add-comment "<note>" <thread-id> "Response…" --author agent
+mysystem --vault "$OBAKO_VAULT_PATH" cmds tick-comment "<note>" --line=N
 ```
 
-The `- [d]` is a mysystem **module task** (it toggles `- [d]` ⇄ `- [A]`); the full task-symbol
-legend lives in `mysystem/src/task-config.ts`. The `- [d] me` line is
-the canonical, greppable marker: **harvest with `grep -rn -- "- \[d\] me"`** across the generated
-notes. The `> [!me]` callout is block-level (multi-line, lists, code all work), scannable,
-collapsible (`> [!me]-`), and block-referenceable — capture the whole callout (the `[!me]` line
-plus following `>` lines), not just the first line. Match `me` case-insensitively.
+This replaces the pre-2026-07-11 convention of a separate "Claude responses pad" wired up with
+`^lk-`/`^cl-` block references and `- [d] me` task markers. **Do not create response pads or
+block-ref wiring for new review rounds.** Old doc sets may still carry the legacy markup — leave
+it as-is; only new dialogue uses threads.
 
-**Any other todo item you write should be an untracked task `- [+]`, never a regular `- [ ]`.**
+**Sweep the whole set.** Comments can sit in any part-note plus the index/TOC note. Run
+`list-comments` over every note of the set (or use the vault-wide Comment Inbox) and finish the
+round only when **no thread anywhere in the set is "your turn"**.
+
+**Any todo item you write should be an untracked task `- [+]`, never a regular `- [ ]`.**
 Unless Lukas explicitly asks for a *tracked* task, write todos as untracked (`- [+]`) — regular
 `- [ ]` tasks flow into his real tracked task system and would overflow it. Untracked toggling:
 `- [+]` (todo) → `- [P]` (done) → `- [p]` (skipped). Full legend in `mysystem/src/task-config.ts`.
 
-**Your responses** are written as `> [!agent]` callouts — **with NO task-line prefix** (Lukas
-retired the `- [d] agent` convention on 2026-07-06; do not add `- [d]`/`- [A]` lines to your own
-responses). In multipart-doc review rounds they live in the Claude responses pad (see below);
-when Lukas explicitly asks for inline dialogue in a durable pad, reply inline the same way:
-
-```md
-> [!agent]
-> Your response — may be fully structured (paragraphs, lists, code) via `>` continuation.
-```
-
-**After answering a comment, tick its source task** `- [d] me` → `- [A] me` in the generated note,
-so handled queries are visibly done. The comment's block id and `↳ response` link go on a
-non-quoted line **directly after** the callout (a callout is one block; the trailing `^id`
-references it). An optional CSS snippet in `.obsidian/snippets/` can give `[!me]`/`[!agent]` a
-distinct colour + icon (target `.callout[data-callout="me"]` / `[data-callout="agent"]` with
-`--callout-color` / `--callout-icon`, enabled in `.obsidian/appearance.json`'s `enabledCssSnippets`).
-
-**ALL responses go in the Claude responses pad — never inline in the generated notes.** This is a
-firm rule. Wherever the user's comments live (`- [d] me` + `[!me]` callouts across the notes, or a
-"my notes" pad), gather **every** answer into the single durable `… - Claude responses` pad and
-cross-link with block refs. **Do NOT reply inline with `[!agent]` callouts in the generated
-notes** — those notes get regenerated for the next version, so any inline reply is silently lost;
-the responses pad survives, keeps the whole dialogue in one readable place, and stays consistent
-across rounds. (Inline `[!agent]` threading is acceptable *only within the responses pad itself*,
-which is durable.) Ticking the source `- [d] me` task is the in-note signal that a query is
-handled; the full answer lives in the pad. Treat unanswered points as tacit agreement only if the
-user says so.
-
-**Wiring the dialogue (scripted, with backups):**
-
-1. Create a **response pad** — a *separate, durable* note (NOT one of the generated set, so the
-   publish script never regenerates it). Parent it to the Ideation chronology **and add a numbered
-   entry for it in the chronology body** — parenting alone is not enough; the chronology's numbered
-   list is the index, so every project pad you create (response pad included) gets a line there in
-   the same step you create it. **Each answer gets its own `## H2 heading`** (a short
-   descriptor, e.g. `## cl-10c · live remote API nodes`), and the answer underneath may be **fully
-   structured** — multiple paragraphs, lists, code blocks — NOT a single cramped paragraph
-   (readability matters; the heading also gives the pad a navigable outline). Directly under the
-   heading put the back-link line carrying the block id —
-   `[[<source note>#^lk-<key>|↑ comment]] ^cl-<key>` — so the comment's forward link lands at the
-   top of the section. Then the response as a `> [!agent]` callout — no task-line prefix —
-   (which may be **fully structured** — multiple paragraphs, lists, code via `>`
-   continuation — NOT a single cramped line). (Author **unwrapped** — one line per paragraph —
-   per the no-hard-wrap rule.)
-2. Tag each source comment in place, and **tick its task**: change `- [d] me` → `- [A] me`, and
-   append a forward link + block id on a non-quoted line directly after the callout —
-   `[[<response pad>#^cl-<key>|↳ response]] ^lk-<key>`. The block id must be **last** on the line.
-   Derive stable keys from the note number + occurrence (e.g. `lk-08a`, `lk-p4`).
-3. Do the tagging/ticking with a script that **backs up each file first** and is idempotent (skip
-   comments already carrying `^lk-` / already ticked `- [A] me`).
-4. **Verify both directions**: every `#^cl-…` referenced from a comment resolves to a block in the
-   response pad, and every `#^lk-…` referenced from the response pad resolves to a tagged comment
-   (a quick Python set-diff; mind filenames with spaces — glob in Python, don't word-split in sh).
-
-**Freeze publishing during an open review round.** Inline comments live in the *generated* notes,
-so re-running the copy script regenerates them clean and drops the comments and their block ids
-(the response pad and Lukas's own notes-pad are durable — not regenerated). So: harvest + answer
-first; only once a round is resolved do you fold accepted changes into the local source, bump the
-version (V2 → V3), and republish clean.
+**Freeze publishing during an open review round.** Comment threads live in the *generated*
+notes, and re-running the copy script regenerates them clean — republishing mid-round silently
+destroys the entire dialogue. Resolve the round first (answer + tick everything, fold accepted
+changes into the local source), then bump the version (V2 → V3) and republish clean. If a
+resolved round's dialogue is worth keeping, archive the threads into a durable pad (parented to
+the Ideation chronology, with a numbered entry there) before republishing.
 
 ## Ideation chronology
 
@@ -229,6 +184,21 @@ regenerated); the fastest "what exists / where are we" index for the project.
   index; the numbered list is the index. Do it in the same step you create the pad.
 - The Ideation chronology's *own* parent is not assumed — **ask the user** which note it should be
   (typically the project's `mod/` note) and set that.
+
+## Pointing Lukas at a note (Obsidian URI)
+
+When you want Lukas to open something you produced — the index/main doc, a sub-note, or a
+specific thread you replied to — **write out the full `obsidian://adv-uri` link as plain
+text on its own line**, never a markdown link or backticks (he usually can't click those). The
+full format and params live in the `myvault` skill ("Showing a note to the user"); the shape is:
+
+```
+obsidian://adv-uri?vault=myvault&filepath=<url-encoded vault-relative path>
+```
+
+Useful variants: `&heading=<H2>` to land on a specific section, and `&block=<id>` (a block id,
+without the leading `^`) to land on a specific block — e.g. a legacy `^cl-…` response block in
+pre-2026-07-11 doc sets.
 
 ## Visualizations (so they render in Obsidian)
 

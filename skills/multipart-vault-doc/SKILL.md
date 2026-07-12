@@ -139,13 +139,17 @@ directly below belong to the thread; a `✓` metadata token means the comment is
 comment in the same thread, then tick the comment you addressed — never your own:
 
 ```bash
-# What do I owe a response to? (threads with turn: "you")
+# What do I owe a response to? (threads with turn: "you"; shows each comment's ref)
 mysystem --vault "$OBAKO_VAULT_PATH" cmds list-comments "<note>" --json
 
-# Reply in-thread, then tick the comment you answered (line from list-comments)
-mysystem --vault "$OBAKO_VAULT_PATH" cmds add-comment "<note>" <thread-id> "Response…" --author agent
-mysystem --vault "$OBAKO_VAULT_PATH" cmds tick-comment "<note>" --line=N
+# Reply in-thread (ALWAYS attribute yourself via --by: claude, codex, …),
+# then tick the comment you answered (ref from list-comments)
+mysystem --vault "$OBAKO_VAULT_PATH" cmds add-comment "<note>" <thread-id> "Response…" --author agent --by claude
+mysystem --vault "$OBAKO_VAULT_PATH" cmds tick-comment "<note>" --ref=<thread-id>#<n>
 ```
+
+To fix your own comment afterwards use `cmds edit-comment "<note>" "New text" --ref=…`
+(or `cmds delete-comment`) — never hand-edit callout blocks.
 
 This replaces the pre-2026-07-11 convention of a separate "Claude responses pad" wired up with
 `^lk-`/`^cl-` block references and `- [d] me` task markers. **Do not create response pads or

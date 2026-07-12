@@ -151,6 +151,11 @@ mysystem --vault "$OBAKO_VAULT_PATH" cmds tick-comment "<note>" --ref=<thread-id
 To fix your own comment afterwards use `cmds edit-comment "<note>" "New text" --ref=…`
 (or `cmds delete-comment`) — never hand-edit callout blocks.
 
+**Title the threads you touch.** A thread's title is the callout-title text on its first
+comment; **if a thread has none, add a concise topic** while you're responding —
+`cmds set-thread-title "<note>" --thread=<id> --title="Short topic"` — it's what Lukas sees
+in the Comment Browser and the banner/floating pill while scrolling long part-notes.
+
 This replaces the pre-2026-07-11 convention of a separate "Claude responses pad" wired up with
 `^lk-`/`^cl-` block references and `- [d] me` task markers. **Do not create response pads or
 block-ref wiring for new review rounds.** Old doc sets may still carry the legacy markup — leave

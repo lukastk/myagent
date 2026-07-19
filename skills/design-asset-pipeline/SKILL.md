@@ -28,7 +28,8 @@ status line.
 
 ### 1. Ideate — raster only, no SVGs
 
-Explore the design space with **gpt-image-2** (OpenAI image API, `OPENAI_API_KEY` in env;
+Explore the design space with **gpt-image-2** (OpenAI image API, `MY_OPENAI_API_KEY` in env — the
+canonical `OPENAI_API_KEY` is deliberately unset on these machines, see the global AGENTS.md;
 the `gen.py` helper pattern — text-to-image for concepts, image-to-image/edits to iterate off
 references and the user's sketches). This stage is about *taste and direction*, so:
 

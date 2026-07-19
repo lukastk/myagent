@@ -66,6 +66,10 @@ than letting one note sprawl.
   hard breaks buy nothing in Obsidian, and a wrap that lands inside a `[[wikilink]]` **breaks the
   link** (wikilinks must be on one line). (Hard breaks are fine only where the format needs them —
   blank lines between blocks, list items, table rows, fenced code/SVG.)
+- **Do not use aliased wikilinks inside Markdown tables.** A link such as
+  `[[Long note title|short label]]` contains `|`, which Markdown table parsing treats as a column
+  boundary. Use the plain `[[Long note title]]` form in a table cell. If compact display text is
+  essential, use a non-table layout rather than pipe-alias notation.
 - **Inline visualizations** where they aid understanding (see "Visualizations" below).
 - End every note with a **navigation footer** using local-slug wikilinks:
   `[[index|↑ Index]] · ← [[03_prev|03 · Prev]] · next → [[05_next|05 · Next]]`
@@ -114,7 +118,8 @@ Generate a script (see `assets/copy_to_vault.py`) that:
 
 After running it, **verify**: every wikilink target resolves to a real note, and every
 `#anchor` referenced resolves to a heading in the glossary. (A quick `grep`/`comm` check over the
-generated files is enough.)
+generated files is enough.) Also scan Markdown table rows and confirm none contains an aliased
+wikilink; `rg '^\|.*\[\[[^]]*\|[^]]*\]\]' <generated-folder>` should return no matches.
 
 ### Recovering edits lost before backups existed
 

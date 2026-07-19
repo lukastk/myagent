@@ -13,7 +13,8 @@ voice calibration from the user's own samples.
 - **Sentence rhythm** — typical lengths, how often they use fragments.
 - **Vocabulary level** — do they write "stuff" and "things," or "elements" and "components"?
   If they write small, don't upgrade them.
-- **Punctuation habits** — parentheticals? ellipses? lowercase-everything? exclamation marks?
+- **Punctuation & spelling habits** — parentheticals? ellipses? lowercase-everything?
+  exclamation marks? UK or US spelling and quote conventions? Match whatever they use.
 - **Transitions** — explicit connectors, or just start the next thought? Which ones recur?
 - **Distinctive tics** — recurring openers, signature phrases, how they handle uncertainty.
 

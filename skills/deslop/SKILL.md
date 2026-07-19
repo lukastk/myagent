@@ -1,6 +1,6 @@
 ---
 name: deslop
-description: De-AI-ify writing — detect and remove the tells of LLM-generated prose (em-dash overuse, "it's not just X, it's Y", significance inflation, rule-of-three, AI vocabulary like "delve"/"tapestry", chatbot artifacts, low-density "treadmill" padding) and rewrite it to sound like a person. Use when asked to humanize / de-slop / remove AI tells, make text sound less AI / less like ChatGPT, clean up AI-sounding writing, or match the user's own voice. Has use-case profiles for scientific, report, prose, email, and matching the user's informal style, plus a scan-only detect/score mode. Grounded in Wikipedia's "Signs of AI writing".
+description: De-AI-ify writing — detect and remove the tells of LLM-generated prose (em-dash overuse, "it's not just X, it's Y", significance inflation, rule-of-three, AI vocabulary like "delve"/"tapestry"/"load-bearing", current-model structural-metaphor and aphorism tells, chatbot artifacts, low-density "treadmill" padding) and rewrite it to sound like a person. Use when asked to humanize / de-slop / remove AI tells, make text sound less AI / less like ChatGPT / less like Claude, clean up AI-sounding writing, or match the user's own voice. Has use-case profiles for scientific, report, prose, email, and matching the user's informal style, plus a scan-only detect/score mode. Grounded in Wikipedia's "Signs of AI writing".
 ---
 
 # deslop — remove the tells of AI writing
@@ -16,6 +16,13 @@ North star: **LLMs regress to the statistical mean. Humans are specific, weird, 
 inconsistent.** The fundamental tell is text that emerges from nowhere, addressed to no one,
 with no stake in its claims. If the reader can't picture a particular person behind it, it
 isn't done.
+
+**Positive spec beats negative spec.** The strongest recent finding in this area: a model
+given a *sample of the target voice* produces more recognisable, less generic output than one
+given only a ban-list — voice-matching moves the result more than a model upgrade does. So the
+tell catalog is only half the tool. When the user hands you their own writing, or you can find
+a sample, match its voice; that's what the profiles (especially `informal-mirror`) are for.
+Cutting tells stops text sounding like AI; matching a voice makes it sound like *someone*.
 
 ## Two modes
 
@@ -57,7 +64,9 @@ Always run all four steps. Don't hand back a first draft.
    detail and plain constructions (is/are/has). Vary sentence length.
 3. **Diagnose.** Ask out loud: *"What still reads as obviously AI here?"* Answer in a few
    bullets — the residue is usually too-tidy rhythm, plausible-but-fabricated specifics, or a
-   slightly slogan-y closer.
+   slightly slogan-y closer. For recent-model (Claude/Fable) output, the stubborn residue is
+   usually §I: structural-metaphor vocabulary ("load-bearing", "the crux", "doing a lot of
+   work"), coined terms of art, and aphorism formulas.
 4. **Final pass.** Fix the residue. Then **grep the text for `—` and `–`; any hit means it
    isn't done** (see Hard rules).
 
@@ -87,6 +96,16 @@ cutting, sanity-check you're not flattening real voice.
 hard-to-fabricate detail, mixed feelings and unresolved tension, dated/era-bound references,
 defensible word choices, genuine asides and self-corrections, and natural variety in sentence
 length. In `prose`, amplify them.
+
+Two editing disciplines:
+
+- **Judge the sense, not the string.** A word on the ban list is banned in its promotional or
+  filler sense, not always. "Analytically valuable" making a substantive claim about value
+  stays; "valuable insights" as puffery goes. Same word, different call.
+- **Editing the user's own writing ≠ de-slopping raw AI output.** When the input is text the
+  *user* wrote (not chatbot output), prefer precise, minimal intervention over the full-rewrite
+  loop below: change the specific violation and leave the surrounding voice — including
+  deliberate tics — intact, and explain each edit so they can overrule it.
 
 ## Detect-mode scoring
 

@@ -6,7 +6,9 @@ why it reads as AI, and a before/after. Grounded in Wikipedia's "Signs of AI wri
 
 **How to use this:** scan for *clusters*, not isolated hits. A single em dash or one
 "however" means nothing. Em dashes + rule-of-three + "vibrant tapestry" + a "Conclusion"
-section is a confession. See the false-positive guard in `SKILL.md` before cutting.
+section is a confession. For recent Claude/Fable output, start with §I — the
+structural-metaphor and coinage tells the older word lists miss. See the false-positive
+guard in `SKILL.md` before cutting.
 
 ---
 
@@ -92,8 +94,8 @@ noting, it's important to note, at the end of the day.*
 Substituting elaborate verbs for simple ones to sound sophisticated. Post-2023 text shows
 a measurable drop in plain "is/are."
 
-Watch: *serves as, stands as, marks, represents, boasts, features, offers* — where *is/are/has*
-would do.
+Watch: *serves as, stands as, marks, represents, boasts, features, offers, houses* — where
+*is/are/has* would do.
 
 > **AI:** Gallery 825 serves as the exhibition space and boasts 3,000 square feet.
 > **Human:** Gallery 825 is the exhibition space. It has 3,000 square feet.
@@ -102,7 +104,8 @@ would do.
 "Not X, but Y." Once is fine. Twice is a pattern. Three times is a chatbot.
 
 Watch: *Not only X but Y, It's not just about X — it's Y, It isn't merely X, it's Z.* Also
-clipped tailing negations bolted on: *…no guessing, …no wasted motion.*
+clipped tailing negations bolted on the end of an otherwise ordinary sentence: *…no
+guessing, …no wasted motion, …no fluff, …full stop.*
 
 > **AI:** It's not just a song, it's a statement.
 > **Human:** The heavy beat sets the aggressive tone.
@@ -232,11 +235,13 @@ the deeper issue, the heart of the matter.*
 
 ### E5. Signposting / announcements
 Announcing the work instead of doing it: *Let's dive in, let's explore, let's break this
-down, here's what you need to know, without further ado.*
+down, here's what you need to know, now let's look at, without further ado.*
 
 ### E6. Hyphenated-pair overuse
 AI hyphenates uniformly, even in predicate position. Keep attributive hyphens (*a
-high-quality report*); drop them after the noun (*the report is high quality*).
+high-quality report*); drop them after the noun (*the report is high quality*). Watch for
+over-reliance on the whole set regardless of position: *real-time, end-to-end, long-term,
+cross-functional, decision-making, well-known, third-party.*
 
 ---
 
@@ -305,3 +310,82 @@ should read coherently without knowing the last commit.
 
 > **AI:** This function was added to replace the previous approach of iterating through all items.
 > **Human:** This function uses a hash map for O(1) lookups.
+
+---
+
+## I. Current-generation model tells (Claude / Fable era)
+
+The pre-2025 word lists (*delve, tapestry, pivotal*) miss the current register. Recent Claude
+and Fable output leans on structural-metaphor vocabulary and manufactured candour rather than
+ChatGPT-style puffery, and the public catalogues only recently caught up. Scan for these on
+top of A–H whenever the text may be recent-model output — this section is the highest-yield
+pass for it.
+
+### I1. The structural-metaphor lexicon ("load-bearing")
+Engineering and architecture vocabulary applied metaphorically to everything, regardless of
+subject. It reads as muscular and precise and is neither; it's the default register a model
+reaches for to sound like it's naming the real mechanism. **"Load-bearing" is the signature
+case** — the defining Claude slop word of this generation, to the point of public jokes and a
+bug report where it recurs every few paragraphs and even a saved memory instruction not to use
+it fails to suppress it. Fix every one the same way: name the specific thing, or say what
+breaks without it.
+
+Watch: *load-bearing, smokescreen, gate (v./n.: "this gates the release"), quality gate,
+guardrail, footgun, escape hatch, the crux, the real question, doing a lot of work / doing the
+heavy lifting / "the word X is doing a lot of work here", doing real work, the quiet part,
+first-class (as in "a first-class concern"), surface area, blast radius, the primitive, the
+substrate, scaffolding (figurative), "this is the tell", "that's the whole ballgame".*
+
+> **AI:** The assumption doing a lot of work here is X. This is a smokescreen for Y.
+> **Human:** The argument depends on X, which isn't established. This diverts attention from Y.
+
+### I2. Invented terms of art & coined compounds (Fable-era)
+Minting portmanteau or compound nouns and terms of art that no one uses and the reader was
+never given; verbing nouns for effect; promoting private working vocabulary into the final
+text; and using "earning" / "carrying weight" as evaluative metaphors. Anthropic's own Fable
+guidance concedes the model builds up private shorthand in long runs — it should be left
+behind unless it's been re-introduced to the reader.
+
+Watch: *coined compounds ("comprehension-opacity", "the deskilling-acceleration nexus"),
+verbed nouns ("to architect", "to surface" for "to raise/show", "to effort"), "the ending
+earns its emotion", "this clause carries a lot of weight".*
+
+> **AI:** The framework surfaces a comprehension-opacity the ending has to earn.
+> **Human:** The framework shows readers less than they think, and the ending doesn't resolve it.
+
+### I3. Aphorism formulas
+Turning an ordinary claim into a reusable-sounding aphorism. Sounds profound, adds no
+precision. Replace the formula with the concrete claim underneath it.
+
+Watch: *"X is the Y of Z", "X is not a tool but a mirror", "X becomes a trap", "the language
+of…", "the currency of…", "the architecture of…", "X is a feature, not a bug"* (and its reverse).
+
+> **AI:** Symmetry is the language of trust.
+> **Human:** Symmetric layouts tend to feel more predictable to users.
+
+### I4. Fake-candid openers (the "honestly?" tell)
+A theatrical pause-and-reveal: a one-word question or aside, then the supposed real answer. A
+person being honest just says the thing. Distinct from the infomercial hook (§F5): this one
+performs *sincerity* rather than suspense.
+
+Watch as **standalone openers**: *"Honestly?", "Look,", "Here's the thing", "The thing is",
+"Let's be honest", "Real talk", "I'll be honest".*
+Boundary: *honestly* or *look* mid-sentence in casual prose is ordinary and fine. The tell is
+the standalone theatrical opener, not the word.
+
+> **AI:** Is it worth it? Honestly? It depends.
+> **Human:** Whether it's worth it depends on how often you'll use it.
+
+### I5. Manufactured punchlines & staccato drama
+Making every sentence land like a quotable closer, or stacking short declarative fragments to
+manufacture drama. One short sentence for emphasis is fine; a run of them sounds engineered.
+The full-stop cousin of the em-dash staccato ban (§C1) and the other face of §F6 — here the
+fault is too *much* clipped rhythm, not too little variance.
+
+> **AI:** Then the model arrived. It had no preference for symmetry. No aesthetic prior. No nostalgia for human taste. The old rules were gone.
+> **Human:** The model changed the search because it didn't favour symmetric or human-looking designs, which made some older assumptions less useful.
+
+### I6. Fragmented headers
+A heading followed by a one-line paragraph that restates the heading before the real content
+starts. Reads as a rhetorical warm-up and pads the prose. Delete the restatement and go
+straight into the substance. (Complements the sentence-case rule, §C4.)

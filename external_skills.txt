@@ -10,3 +10,4 @@ lukastk/mysystem@myvault
 lukastk/sesh@sesh-cli
 lukastk/sesh@do-tickets
 lukastk/mysrs@mysrs-cards
+ayghri/i-have-adhd@i-have-adhd

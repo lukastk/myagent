@@ -1,0 +1,4 @@
+interface:
+  display_name: "Digestible Technical Writing"
+  short_description: "Write technical documents readers can absorb"
+  default_prompt: "Use $digestible-technical-writing to make this technical document clear, self-contained, and easy to review."

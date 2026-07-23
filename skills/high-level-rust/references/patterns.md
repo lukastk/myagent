@@ -5,18 +5,17 @@ Use these templates as starting points, not mandatory framework code.
 ## Contents
 
 1. [Boundary conversion](#boundary-conversion)
-2. [State and transition](#state-and-transition)
-3. [Application service](#application-service)
-4. [Ownership choices](#ownership-choices)
-5. [Review rewrites](#review-rewrites)
+2. [Aggregate construction and rehydration](#aggregate-construction-and-rehydration)
+3. [State and transition](#state-and-transition)
+4. [Application service](#application-service)
+5. [Ownership choices](#ownership-choices)
+6. [Review rewrites](#review-rewrites)
 
 ## Boundary Conversion
 
 Let boundary types mirror incoming data. Validate and convert once:
 
 ```rust
-use std::sync::Arc;
-
 struct CreateLineDto {
     sku: String,
     quantity: u16,
@@ -37,7 +36,7 @@ impl TryFrom<u16> for Quantity {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct LineItem {
-    sku: Arc<str>,
+    sku: String,
     quantity: Quantity,
 }
 
@@ -53,14 +52,63 @@ impl TryFrom<CreateLineDto> for LineItem {
 }
 ```
 
-Keep the DTO's `String`: it is consumed. Use `Arc<str>` in the domain only because domain
-snapshots will share it.
+Keep the DTO's `String` and move it into the domain when one owner is natural. If multiple
+snapshots genuinely share the text, use `Rc<str>` within one thread or `Arc<str>` only when
+those snapshots cross threads.
+
+## Aggregate Construction And Rehydration
+
+Private scalar fields do not protect an aggregate whose public fields let callers assemble
+inconsistent totals or impossible lifecycle states. Keep the aggregate closed and validate
+persistence data on the way back in.
+
+Illustrative pseudocode follows; `OrderRow`, conversions, and consistency rules are
+domain-specific and intentionally omitted:
+
+```rust
+pub struct Order {
+    id: OrderId,
+    lines: Vec<LineItem>,
+    total: Money,
+    state: OrderState,
+}
+
+impl Order {
+    pub fn draft(id: OrderId) -> Self {
+        // Build the one valid initial shape.
+    }
+
+    pub fn try_rehydrate(row: OrderRow) -> Result<Self, DomainError> {
+        let candidate = Self {
+            id: row.id.try_into()?,
+            lines: convert_lines(row.lines)?,
+            total: row.total.try_into()?,
+            state: row.state.try_into()?,
+        };
+        validate_consistency(&candidate)?;
+        Ok(candidate)
+    }
+
+    pub fn state(&self) -> &OrderState {
+        &self.state
+    }
+}
+```
+
+Do not expose a general unchecked constructor merely to make a repository compile. If a
+trusted constructor is unavoidable, keep it `pub(crate)` and keep row validation adjacent to
+it.
 
 ## State And Transition
 
 Prefer one state variant over interacting flags:
 
+The following fragments assume snapshots cross async worker threads, so `Arc` is deliberate.
+For a single-thread runner, use `Rc` or plain owned collections instead.
+
 ```rust
+use std::sync::Arc;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OrderState {
     Draft { lines: Arc<Vec<LineItem>> },
@@ -144,6 +192,10 @@ collection only after repeated snapshot updates justify it.
 
 Keep I/O in an application shell:
 
+This fragment assumes repository and publisher substitution are real and multiple runtime
+handlers share dynamically selected implementations. With one stable implementation, use a
+concrete dependency and omit these `Arc<dyn Trait>` fields.
+
 ```rust
 trait OrderRepository: Send + Sync {
     fn load(&self, id: OrderId) -> Result<Order, RepositoryError>;
@@ -210,7 +262,7 @@ enum JobState {
     Queued,
     Running { started_at: u64 },
     Succeeded { finished_at: u64 },
-    Failed { finished_at: u64, error: Arc<str> },
+    Failed { finished_at: u64, error: String },
 }
 ```
 

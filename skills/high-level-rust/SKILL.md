@@ -39,6 +39,13 @@ Convert at the boundary into domain types:
 Do not wrap every scalar. Add a domain type only when it enforces meaning, prevents mixing
 identities or units, or centralizes validation.
 
+Protect aggregate invariants as well as leaf values. Keep aggregate fields private (or
+`pub(crate)` inside a deliberate trust boundary) when a public struct literal could fabricate
+a state that normal transitions forbid. Expose read-only accessors and named constructors.
+Treat database rows as boundary data: convert them through fallible rehydration that checks
+cross-field facts such as totals, non-empty submitted collections, and valid state-specific
+data before returning a domain aggregate.
+
 ### 2. Shape A Functional Core
 
 Express business decisions as pure transformations where practical:
@@ -69,6 +76,12 @@ force transition logic to be reconsidered.
 
 Keep `String` and `Vec<T>` when one owner is natural. Do not put primitives, small values,
 or every nested struct behind `Arc` mechanically.
+
+Choose `Rc` versus `Arc` from the actual thread boundary, not from familiarity or a
+hypothetical future adapter. A synchronous single-thread runner should normally keep owned
+values or use `Rc`; an async service may justify `Arc` when values cross spawned tasks or its
+public API intentionally needs `Send + Sync`. State that reason when choosing atomic
+reference counting.
 
 Treat every clone as a cost with a known mechanism:
 
@@ -106,6 +119,7 @@ or a documented failure policy.
 Test the properties the architecture is meant to buy:
 
 - Invalid scalar construction and structurally impossible states.
+- Invalid transport or persistence snapshots failing rehydration before entering the domain.
 - Allowed and rejected state transitions.
 - Old snapshots remaining unchanged after pure decisions.
 - Application orchestration with lightweight adapters or fakes.

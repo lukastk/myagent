@@ -1,0 +1,4 @@
+interface:
+  display_name: "High-Level Rust"
+  short_description: "Build application Rust with deliberate ownership"
+  default_prompt: "Use $high-level-rust to design this Rust application with explicit domain types, a pure core, and deliberate ownership."

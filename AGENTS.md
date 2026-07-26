@@ -28,8 +28,8 @@ not boxyard boxes and had to be moved out and re-imported via `boxyard new --fro
 
 To ssh into one of my machines (or run a command on one), **prefer
 `ssh-target <machine> [args...]`** — the canonical path. It looks the machine up
-in the `MYRIG_MACHINES` zsh array (`macbook`, `macstudio`, `mymain`, `termux`)
-and connects with the right user/host/port, plus connection multiplexing, a fast
+in the `MYRIG_MACHINES` zsh array (`macbook`, `macstudio`, `mymain`, `termux`,
+`ideapad`) and connects with the right user/host/port, plus connection multiplexing, a fast
 `ConnectTimeout`, and `StrictHostKeyChecking=accept-new`. Run `ssh-target` with
 no args to list the machines.
 
@@ -112,6 +112,13 @@ The extensions that ship in this repo (each under `extensions/<name>/`; see the 
 - **message-barrel** — save draft messages into a barrel and paste them back into the input editor later (`README.md`).
 - **pi-hashline-edit** — replaces the built-in `read`/`edit` tools with a hash-anchored line-editing workflow that rejects stale edits (`README.md`).
 - **privatemode** — registers PrivateMode AI (E2E-encrypted confidential computing) as an OpenAI-compatible provider, auto-starting its local podman proxy on demand.
+- **sesh-agent-state** — ⚠️ **not authored here**: a symlink to
+  `../../sesh/integrations/pi/sesh-agent-state`. The extension lives in the **sesh** repo
+  (edit it there); myagent only registers it so `install-pi.sh` symlinks it into
+  `~/.pi/agent/extensions/` like a local one. It reports pi turn lifecycle to the sesh daemon
+  via `sesh thread report-state`, giving sesh exact busy/idle (`state_authority = reported`)
+  instead of the pane content-diff heuristic. Inert outside a sesh thread (no `SESH_THREAD_ID`
+  → it registers nothing). The claude twin is the hook set in myrig's `home/.claude/settings.json`.
 - **session-model** — session-only model switching: `/smodel`, `/smodel-scope`, and cycle shortcuts.
 - **web** — three tools — web search, URL fetch (with site-specific scrapers), and browser automation; transplanted from oh-my-pi (`README.md`).
 

@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+#
+# remote-playwright-host — target-side readiness gate for remote Playwright.
+# Installed next to @playwright/mcp and invoked only by remote-playwright-mcp's
+# fixed SSH command. Errors go to stderr; stdout stays a clean MCP byte stream.
+
+set -euo pipefail
+
+log_error() {
+    echo "remote-playwright-host: $*" >&2
+}
+
+if [ "$#" -ne 0 ]; then
+    log_error "this target-side entry point does not accept arguments"
+    exit 64
+fi
+
+owner_pid="${BRAVE_CDP_PROFILE_OWNER_PID:-}"
+case "$owner_pid" in
+    ''|0|1|0*|*[!0-9]*)
+        log_error "BRAVE_CDP_PROFILE_OWNER_PID must be a canonical decimal remote command-shell PID >= 2"
+        exit 64
+        ;;
+esac
+if [ "$owner_pid" != "$$" ]; then
+    log_error "profile owner PID '$owner_pid' is not this remote MCP process ($$)"
+    exit 64
+fi
+if ! kill -0 "$owner_pid" 2>/dev/null; then
+    log_error "profile owner PID '$owner_pid' is not alive"
+    exit 70
+fi
+
+if [ "$(uname -s)" != "Darwin" ]; then
+    log_error "incompatible target OS '$(uname -s)' (remote browser workers currently require macOS)"
+    exit 69
+fi
+
+target_user="$(id -un)"
+target_uid="$(id -u)"
+playwright_dir="$HOME/.local/playwright-mcp"
+playwright_cli="$playwright_dir/node_modules/@playwright/mcp/cli.js"
+launcher="$playwright_dir/brave-cdp-mcp"
+brave_bin="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+base_profile="$HOME/Library/Application Support/BraveSoftware/Brave-Browser"
+
+if ! command -v node >/dev/null 2>&1; then
+    log_error "Node.js is missing from the target login PATH; run myrig/myagent install"
+    exit 69
+fi
+if [ ! -f "$playwright_cli" ]; then
+    log_error "Playwright MCP is not installed at $playwright_cli; run myagent install on this target"
+    exit 69
+fi
+if [ ! -x "$launcher" ]; then
+    log_error "isolated Brave launcher is missing at $launcher; run myagent install on this target"
+    exit 69
+fi
+if [ ! -x "$brave_bin" ]; then
+    log_error "Brave Browser is not installed at $brave_bin"
+    exit 69
+fi
+if [ ! -f "$base_profile/Local State" ] || [ ! -d "$base_profile/Default" ]; then
+    log_error "Brave profile is not initialized at $base_profile; launch Brave once on this target"
+    exit 69
+fi
+if ! command -v launchctl >/dev/null 2>&1 \
+   || ! launchctl print "gui/$target_uid" >/dev/null 2>&1; then
+    log_error "the target user's macOS GUI launchd domain is unavailable; keychain-backed browser launch is not ready"
+    exit 69
+fi
+if ! command -v sudo >/dev/null 2>&1 \
+   || ! sudo -n launchctl asuser "$target_uid" sudo -n -u "$target_user" true >/dev/null 2>&1; then
+    log_error "passwordless launchctl-asuser keychain bridge is unavailable; provision myagent's macOS browser launch path"
+    exit 69
+fi
+
+# Remote workers must always use the exact target-local install checked above.
+# Do not let login-shell/test tunables redirect this to playwright-main's shared
+# :9222 browser or to a different CLI/runtime.
+unset BRAVE_CDP_REAL BRAVE_CDP_PORT BRAVE_CDP_HEADLESS \
+    BRAVE_CDP_CLI BRAVE_CDP_RUNNER PLAYWRIGHT_MCP_SANDBOX
+export BRAVE_CDP_BRAVE_BIN="$brave_bin"
+exec "$launcher"

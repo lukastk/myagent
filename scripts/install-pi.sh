@@ -493,8 +493,8 @@ apply_core_patch() {
 }
 
 # PATCH 1 (all platforms): skip the Chromium `Browser.setDownloadBehavior` CDP
-# call. Brave rejects it when driven over CDP (the connect path Linux always
-# uses, and the macOS BRAVE_CDP_REAL opt-out), raising "Browser context
+# call. Brave rejects it when driven over CDP (the BRAVE_CDP_REAL/PORT opt-out
+# paths), raising "Browser context
 # management is not supported". We neutralise only the Chromium guard — the
 # compound condition that also checks `name !== "clank"` — leaving the unrelated
 # BiDi/Firefox download path intact. Harmless in launch mode (just doesn't
@@ -510,9 +510,9 @@ apply_core_patch \
 # Playwright LAUNCHES Brave itself; those switches force a mock keychain so the
 # launched Brave can't decrypt the seeded profile's cookies and lands logged-out.
 # Removing them lets Brave use the real macOS "Brave Safe Storage" key (already
-# granted to the Brave app) → the isolated browser is logged in. On Linux the
-# launcher CONNECTS to an existing Brave and never launches one, so these
-# switches are irrelevant — skip the patch entirely there.
+# granted to the Brave app) → the isolated browser is logged in. Linux launch
+# mode deliberately keeps --password-store=basic: Linux Brave profiles use its
+# portable v10/"peanuts" key, so stripping the switch there would be wrong.
 if [ "$(uname -s)" = "Darwin" ]; then
     # The switch lives in coreBundle.js (bundled) or the legacy per-file
     # chromiumSwitches.js. Deliberately NOT electron/loader.js — that copy is the
@@ -543,7 +543,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
         echo "    mock-keychain patch (already applied)"
     fi
 else
-    echo "    mock-keychain patch (skipped — not macOS; launcher connects, never launches)"
+    echo "    mock-keychain patch (skipped — Linux launch uses password-store=basic)"
 fi
 
 # PATCH 3 (all platforms): clarify the browser_close tool description. Upstream
@@ -562,19 +562,20 @@ apply_core_patch \
     'description: "Close the entire browser, ending its process and freeing all of its memory. This does NOT merely close the current tab. Playwright relaunches the browser automatically on the next browser tool call, so call this as soon as you finish browsing to release resources." /* patched: browser_close frees resources */' \
     'patched: browser_close frees resources'
 
-# Symlink the per-agent isolated-Brave launcher next to the playwright install,
-# so mcp.json's playwright server (command: bash, args: [brave-cdp-mcp],
-# cwd: ~/.local/playwright-mcp) can find it. The wrapper gives each agent its
-# own logged-in Brave; see scripts/brave-cdp/brave-cdp-mcp.
-BRAVE_CDP_WRAPPER_SRC="$REPO_ROOT/scripts/brave-cdp/brave-cdp-mcp"
-BRAVE_CDP_WRAPPER_DEST="$PLAYWRIGHT_MCP_DIR/brave-cdp-mcp"
-if [ -f "$BRAVE_CDP_WRAPPER_SRC" ]; then
-    chmod +x "$BRAVE_CDP_WRAPPER_SRC"
-    ln -sfn "$BRAVE_CDP_WRAPPER_SRC" "$BRAVE_CDP_WRAPPER_DEST"
-    echo "    Linked brave-cdp-mcp launcher"
-else
-    echo "    WARNING: brave-cdp-mcp wrapper not found at $BRAVE_CDP_WRAPPER_SRC"
-fi
+# Symlink the local launcher plus both sides of the allow-listed remote stdio
+# transport next to the persistent Playwright install. mcp.json runs them from
+# this cwd, and a target reached over SSH invokes remote-playwright-host here.
+for launcher_name in brave-cdp-mcp remote-playwright-mcp remote-playwright-host; do
+    launcher_src="$REPO_ROOT/scripts/brave-cdp/$launcher_name"
+    launcher_dest="$PLAYWRIGHT_MCP_DIR/$launcher_name"
+    if [ ! -f "$launcher_src" ]; then
+        echo "    ERROR: required Playwright launcher missing at $launcher_src" >&2
+        exit 1
+    fi
+    chmod +x "$launcher_src"
+    ln -sfn "$launcher_src" "$launcher_dest"
+    echo "    Linked $launcher_name"
+done
 
 echo ""
 echo "==> Installing external extensions"

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+#
+# remote-playwright-mcp — carry the ordinary Playwright MCP stdio protocol over
+# Lukas's existing ssh-target/Tailscale trust boundary to an allow-listed Mac.
+#
+# The selected target owns Playwright, Brave, its isolated profile, cookies,
+# keychain access, downloads, and output files. Only normal MCP requests/results
+# (including screenshots) cross SSH. No service listens on a network port.
+
+set -euo pipefail
+
+usage() {
+    echo "Usage: remote-playwright-mcp <macstudio|macbook>" >&2
+}
+
+if [ "$#" -ne 1 ]; then
+    usage
+    exit 64
+fi
+
+target="$1"
+case "$target" in
+    macstudio|macbook)
+        ;;
+    *)
+        echo "remote-playwright-mcp: disallowed target '$target' (allowed: macstudio, macbook)" >&2
+        exit 64
+        ;;
+esac
+
+if ! ssh_target_bin="$(command -v ssh-target 2>/dev/null)"; then
+    echo "remote-playwright-mcp: ssh-target is not installed; install myrig on this client" >&2
+    exit 69
+fi
+
+# This is a fixed remote command. The only caller-controlled value is `target`,
+# which was allow-listed above and is passed as a separate local argv. The
+# remote command-shell PID is unique per SSH channel even when ssh-target reuses
+# one multiplexed connection. Every following step execs, so that exact decimal
+# PID remains alive for the MCP lifetime and can safely key target-local
+# kill(0)-based profile GC. LC_ALL=C avoids forwarding Linux's C.UTF-8 locale to
+# macOS bash, which otherwise emits a harmless warning on MCP stderr.
+exec "$ssh_target_bin" "$target" \
+    'exec env LC_ALL=C BRAVE_CDP_PROFILE_OWNER_PID=$$ "$HOME/.local/playwright-mcp/remote-playwright-host"'

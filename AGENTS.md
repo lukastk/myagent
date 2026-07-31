@@ -1,6 +1,7 @@
 # myagent
 
-Personal Pi coding agent extensions, skills, and configuration.
+Personal coding-agent extensions, skills, MCP servers, and configuration for
+Pi, Claude Code, and Codex.
 
 ## Anti-pattern: never hand-create folders in `~/dev` (it is boxyard-managed)
 
@@ -50,18 +51,21 @@ skill** (its "SSHing into the machines" section is the source of truth here).
 ```
 myagent/
 ├── AGENTS.md               # This file (CLAUDE.md is a stub that imports it via `@AGENTS.md`)
-├── install.sh              # Orchestrator — runs scripts/install-pi.sh && scripts/install-claude.sh
+├── install.sh              # Orchestrator — runs the Pi, Claude, and Codex installers
 ├── external_extensions.txt     # External extensions to install via `pi install`
 ├── external_extensions_mac.txt # macOS-only external extensions
 ├── external_skills.txt         # External skills to install via `npx skills add`
 ├── pi_settings.json        # Declarative Pi settings, shallow-merged onto ~/.pi/agent/settings.json
-├── mcp.json                # MCP server definitions (symlinked to ~/.config/mcp/mcp.json; also applied to Claude)
+├── mcp.json                # MCP server definitions applied to Pi, Claude, and Codex
 ├── scripts/
 │   ├── install-pi.sh                  # Pi-side install (extensions, skills, mcp.json symlinks)
 │   ├── install-claude.sh              # Claude Code install (skill symlinks + `claude mcp add-json`)
+│   ├── install-codex.sh               # Codex MCP install/prune via `codex mcp`
 │   ├── configure-pi-tool-binaries.sh
 │   └── brave-cdp/
-│       └── brave-cdp-mcp              # Per-agent isolated-Brave launcher for the playwright MCP server
+│       ├── brave-cdp-mcp              # Per-agent isolated-Brave launcher for the playwright MCP server
+│       ├── remote-playwright-mcp      # Allow-listed SSH stdio client transport
+│       └── remote-playwright-host     # Target-Mac readiness/keychain gate
 ├── extensions/             # Local extensions (each is a folder)
 │   └── <name>/
 │       ├── index.ts        # Extension entry point (default export)
@@ -74,8 +78,9 @@ myagent/
 
 ## How install.sh works
 
-`./install.sh` runs `scripts/install-pi.sh` then `scripts/install-claude.sh`.
-Pass `--prune` to forward it to both. Pass `--pi-only` or `--claude-only` to skip one.
+`./install.sh` runs `scripts/install-pi.sh`, `scripts/install-claude.sh`, then
+`scripts/install-codex.sh`. Pass `--prune` to all three. Pass `--pi-only`,
+`--claude-only`, or `--codex-only` to run one surface.
 
 **`scripts/install-pi.sh`** — Pi-side:
 1. Symlinks each folder under `extensions/` into `~/.pi/agent/extensions/` so Pi auto-discovers them.
@@ -85,7 +90,7 @@ Pass `--prune` to forward it to both. Pass `--pi-only` or `--claude-only` to ski
 5. Shallow-merges `pi_settings.json` onto `~/.pi/agent/settings.json` (our keys win, runtime keys preserved — see "Pi settings" below).
 6. Symlinks `mcp.json` to `~/.config/mcp/mcp.json` and `~/.pi/agent/mcp.json`.
 7. Runs `scripts/configure-pi-tool-binaries.sh` to configure Pi tool binaries.
-8. Installs Playwright MCP (patched): persistently installs `@playwright/mcp` into `~/.local/playwright-mcp` and applies three patches — a `Browser.setDownloadBehavior` skip (all platforms, for the CDP-connect/opt-out path), a Chromium-switches patch (**macOS only** — drop `--use-mock-keychain`/`--password-store=basic` so a Brave that Playwright *launches* can decrypt the seeded profile's cookies; skipped on Linux, where the launcher connects rather than launches), and the `browser_close` tool description (all platforms; upstream ships "Close the page", which misled agents into thinking it only closes a tab and leaving the per-agent Brave resident all session; it actually disposes the whole browser process, so the patched text tells agents to close it when done). The installer locates each patch target by string search, since current playwright-core (≥1.61) bundles these into `lib/coreBundle.js` (formerly the separate `crBrowser.js` / `chromiumSwitches.js`). Also symlinks the `brave-cdp-mcp` launcher (from `scripts/brave-cdp/`) next to that install. (The `playwright` server in `mcp.json` runs that launcher — see "Per-agent isolated Brave" below.)
+8. Installs Playwright MCP (patched): persistently installs `@playwright/mcp` into `~/.local/playwright-mcp` and applies three patches — a `Browser.setDownloadBehavior` skip (all platforms, for the CDP-connect/opt-out path), a Chromium-switches patch (**macOS only** — drop `--use-mock-keychain`/`--password-store=basic` so a Brave that Playwright *launches* can decrypt the seeded profile's cookies; Linux deliberately keeps `--password-store=basic` for its portable cookie key), and the `browser_close` tool description (all platforms; upstream ships "Close the page", which misled agents into thinking it only closes a tab and leaving the per-agent Brave resident all session; it actually disposes the whole browser process, so the patched text tells agents to close it when done). The installer locates each patch target by string search, since current playwright-core (≥1.61) bundles these into `lib/coreBundle.js` (formerly the separate `crBrowser.js` / `chromiumSwitches.js`). It symlinks `brave-cdp-mcp`, `remote-playwright-mcp`, and `remote-playwright-host` next to that install. (The Playwright servers in `mcp.json` run those launchers — see below.)
 9. Reads `external_extensions.txt` (+ `external_extensions_mac.txt` on macOS) and runs `pi install <source>`.
 10. Reads `external_skills.txt` and runs `npx -y skills add <source> -g -y -a codex -a claude-code -a pi`. The explicit `-a` agent list (repeated per agent — a comma-joined value is parsed as one invalid name) stops the skills CLI's `-y` fast path from force-adding every skills-family agent, including project-only PromptScript, which would otherwise fail every global install.
 11. With `--prune`, removes stale local symlinks and reconciles installed extensions/skills against what's declared:
@@ -101,6 +106,16 @@ After running install, reload Pi with `/reload` if it's running.
 4. With `--prune`, removes Claude skill symlinks and MCP servers it previously installed but are no longer listed.
 
 Restart Claude Code to pick up new skills/MCP servers.
+
+**`scripts/install-codex.sh`** — Codex side:
+1. Reads every server from `mcp.json` and validates the full set before changing Codex config.
+2. Re-applies stdio servers with `codex mcp remove/add`; like Claude, entries with `cwd` are safely wrapped in `sh -c "cd … && exec …"` because the installed `codex mcp add` command has no `cwd` flag.
+3. Applies simple streamable-HTTP entries by URL and fails loudly rather than dropping unsupported static headers.
+4. Records the server names it manages in `.install-state/codex_mcp.txt`; with `--prune`, removes previously managed names no longer declared.
+
+Codex CLI, the Codex IDE extension, and the Codex desktop app share
+`~/.codex/config.toml`. Restart Codex clients after install. Codex does not read
+myagent's JSON MCP config on its own; this installer is the explicit bridge.
 
 ## Local extensions
 
@@ -374,7 +389,9 @@ own `/bin/bash` fallback rather than getting a broken path).
 
 ## MCP servers
 
-MCP server definitions live in `mcp.json` at the repo root. This file is symlinked to `~/.config/mcp/mcp.json` by `install.sh`, making it the global MCP config.
+MCP server definitions live in `mcp.json` at the repo root. The Pi installer
+symlinks it to the shared/Pi config paths; the Claude and Codex installers
+translate the same declarations into those clients' user-scoped configs.
 
 The `pi-mcp-adapter` extension (listed in `external_extensions.txt`) reads this config and bridges MCP tools into Pi. Servers are lazy — they spawn on first tool use and auto-disconnect after idle timeout.
 
@@ -383,6 +400,15 @@ A server entry may set `"directTools": true` (e.g. the `playwright` server does)
 The `playwright` server is special-cased: instead of an `npx`-spawned server, it runs the `brave-cdp-mcp` launcher in the patched persistent install at `~/.local/playwright-mcp` (`command: bash`, `args: ["brave-cdp-mcp"]`, `cwd: ~/.local/playwright-mcp`) that `scripts/install-pi.sh` creates, patches, and links the launcher into. See the "Per-agent isolated Brave" section below and the install-pi.sh step above.
 
 A second `playwright-main` server runs the **same launcher** with `env: { BRAVE_CDP_REAL: "1" }`, so it connects to the user's real interactive Brave on `:9222` (launched via the `brave-mcp` shell function in myrig) instead of launching an isolated one. It exists so an agent can opt into driving the user's live window (tools namespaced `mcp__playwright-main__*`) without the user restarting the session — both servers are registered from the start; the agent just picks the toolset. It's `directTools: false` (unlike the isolated `playwright`'s `true`) so its ~20 browser tools stay behind the `/mcp` discovery proxy and don't double the direct-tool count in every session; promote them on demand. Caveat: agents must **not** call `browser_close` on this server — it would close the user's real Brave window (the global browser-usage note in myrig spells this out).
+
+Two remote servers use the same upstream tool surface on a chosen Mac:
+
+- **`playwright-macstudio`** — the preferred always-on, high-RAM acquisition worker.
+- **`playwright-macbook`** — the opt-in laptop worker; it can be asleep/offline.
+
+Both are `directTools: false` so Pi does not eagerly add two more copies of the
+Playwright schemas to every prompt. Their transport and lifecycle are described
+under "Remote Playwright workers" below.
 
 ### Per-agent isolated Brave (`brave-cdp-mcp`)
 
@@ -393,13 +419,70 @@ Source: `scripts/brave-cdp/brave-cdp-mcp`. Pointing Playwright MCP at one shared
   - **Linux:** source profile `~/.config/BraveSoftware/Brave-Browser`; `--headless`+`--no-sandbox` when there's no `DISPLAY` (cloud/server box), headed on a Linux desktop. Cookies are `v10`/`--password-store=basic` (the hardcoded "peanuts" key — **no keychain**, so patch 2 correctly doesn't run here); the launched Brave decrypts the seed for free. Caveat: a headless box's own Brave profile is often barely logged in, so "logged in as you" is weaker than macOS — the isolated Brave just inherits whatever the box profile has. (See `_dev/experiments/` for the R&D.)
 - **Sandbox / the `--no-sandbox` banner.** For **headed** launches (macOS, Linux desktop) the launcher exports `PLAYWRIGHT_MCP_SANDBOX=true` so the Chromium sandbox stays **on**. `@playwright/mcp` otherwise leaves `chromiumSandbox` undefined for an `--executable-path` browser — its config only defaults it for `browserName === "chromium"`, which is never set on this path — so Playwright passes `--no-sandbox` and Brave shows the alarming "unsupported command-line flag: --no-sandbox" banner. The CLI `--sandbox` flag can't fix it (it's mapped back to undefined), so the env var is the only lever. **Headless** launches (cloud Linux, no `DISPLAY`) keep `--no-sandbox` on purpose — the sandbox usually can't initialise there.
 - **Why launch mode.** The agent starts the MCP server at session init just to enumerate tools — but `tools/list` returns static schemas and Playwright only creates the browser on the first *tool call*, so **nothing opens for sessions that never browse** (an earlier connect-over-CDP design pre-launched Brave here and opened a window every session). Launch mode also means Playwright owns the browser lifecycle, so there is **no watchdog, no registry, no CDP port pool** — the browser dies with the MCP server.
-- **Cleanup.** On startup the launcher GC's `/tmp/brave-cdp/<pid>` dirs (and kills any orphaned Brave) whose agent PID is dead — cheap insurance against a browser orphaned by a hard-killed server. `/tmp`'s 3-day rule and reboot are further backstops.
-- **Reuse.** Lazy MCP re-spawn within one agent reuses the same `/tmp/brave-cdp/<agent-pid>` profile (no re-seed).
+- **Cleanup.** On startup the launcher GC's `/tmp/brave-cdp/<pid>` dirs (and kills any orphaned Brave) whose owner PID is dead — cheap insurance against a browser orphaned by a hard-killed server. `/tmp`'s 3-day rule and reboot are further backstops.
+- **Reuse.** Lazy MCP re-spawn within one local agent reuses the same `/tmp/brave-cdp/<agent-pid>` profile (no re-seed); each remote SSH channel gets its own live owner PID.
+- **Profile owner override.** Local Pi/Claude/Codex launches still default to `$PPID`
+  (the agent PID). The remote transport passes `BRAVE_CDP_PROFILE_OWNER_PID`
+  from the unique remote command-shell `$$`; the launcher accepts only a live,
+  canonical decimal PID of at least 2 (no leading zero). Validation is lexical,
+  so oversized caller text never enters shell arithmetic. This preserves
+  numeric `kill -0` GC while avoiding collisions between SSH channels that
+  share one multiplexed sshd parent.
 - **Opt-out / fallback to connect-mode.** `BRAVE_CDP_REAL=1` (or `BRAVE_CDP_PORT=9222`) → connect to your real interactive Brave on `:9222` instead. (This is exactly what the `playwright-main` MCP server sets in its env — see the MCP servers section above.) `BRAVE_CDP_PORT=<n>` → connect to an explicit already-running port. **No launchable Brave** on the box (e.g. termux, or any box without a `brave-browser`/`brave` binary) → connect-only to `:9222`. (Previously *all* non-macOS connected; now Linux-with-Brave launches its own isolated Brave like macOS — so a Linux agent no longer needs a pre-running `:9222` Brave.)
 - **Limitation.** The cheap seed only carries cookie-based logins; sites that keep auth in Local Storage / IndexedDB won't be logged in (widen the seed in the launcher if needed).
 - **Tunables (mainly for tests):** `BRAVE_CDP_CLI` / `BRAVE_CDP_RUNNER` (cli path / runtime), `BRAVE_CDP_BRAVE_BIN` (Brave binary), `BRAVE_CDP_HEADLESS=1/0` (force headless on/off).
 
-Related follow-up lives in **myrig**: the `brave-mcp` shell function (`home/.myrig/zshenv/coding.sh`) still launches your interactive `:9222` Brave, and the global browser-usage note is in `home/.pi/agent/AGENTS.md`.
+Related follow-up lives in **myrig**: the `brave-mcp` shell function (`home/.myrig/zshenv/coding.sh`) still launches your interactive `:9222` Brave, and the global browser-usage note is in `home/.pi/agent/AGENTS.md`. That sibling-repo note currently explains only `playwright` and `playwright-main`; update it separately after deployment if the remote worker names should be advertised in every agent session. This task does not patch myrig.
+
+### Remote Playwright workers (`remote-playwright-mcp`)
+
+Source: `scripts/brave-cdp/remote-playwright-mcp` (client side) and
+`remote-playwright-host` (target side). This is a narrow stdio transport, not a
+general remote executor:
+
+1. The client accepts exactly `macstudio` or `macbook`; unknown/disallowed names
+   fail with exit 64 before SSH. It invokes the canonical `ssh-target` executable,
+   so host/user/port selection and Tailscale/SSH trust remain owned by myrig.
+2. The remote command is a fixed literal. It sets
+   `BRAVE_CDP_PROFILE_OWNER_PID=$$` from that channel's command shell and then
+   `exec`s the installed target entry point. Callers cannot supply an arbitrary
+   host, SSH option, path, or remote command.
+3. `remote-playwright-host` requires macOS, the exact live owner PID, target
+   Node/Playwright/Brave/profile paths, an active GUI launchd domain, and the
+   passwordless `launchctl asuser` keychain bridge. It fails on stderr before
+   emitting MCP stdout if the target is unprepared or incompatible.
+4. The target entry point forces isolated launch mode and execs the normal
+   `brave-cdp-mcp`. The target's installed `@playwright/mcp` owns initialize,
+   `tools/list`, and every browser call; no Playwright tool/schema is duplicated.
+
+**Isolation.** OpenSSH multiplexes the connection but each command channel has
+its own shell PID. Passing that PID explicitly is load-bearing: using the shared
+sshd parent made two clients select one profile and Brave rejected the second.
+Every later `exec` preserves the chosen PID as the outer MCP process, so it stays
+alive for the entire session and disappears with the SSH channel.
+
+**Lifecycle.** Normal stdio EOF makes Playwright dispose Brave, then SSH exits.
+If the client is hard-killed, SSH channel teardown is the first cleanup path;
+the next target launcher additionally kills any process whose numeric profile
+owner no longer passes `kill -0` and removes the stale profile. Target `/tmp`
+aging/reboot are final backstops. A true network partition may keep sshd's
+session PID alive until SSH/OS timeout; GC deliberately does not kill an owner
+that still appears live.
+
+**Security/data locality.** No server port is opened. The target retains its
+HOME, Playwright version, Brave profile, cookies, login databases, keychain
+access, downloads, and output files. MCP text/image results and screenshots are
+the only browser data carried back over SSH. Downloads and browser-visible local
+file paths refer to the target, not the client.
+
+**Preparation and failures.** Run myagent's installer on both client and target.
+Mac Studio is the empirically verified default worker; MacBook may be offline.
+An offline allowed target fails through `ssh-target`'s bounded connect timeout.
+Adding another allowed worker requires a deliberate myrig machine-inventory
+change plus an explicit allow-list/config update here; do not accept raw hosts.
+
+R&D and measurements are in
+`_dev/experiments/02_remote_stdio_playwright_worker/FINDINGS.md`.
 
 ### Adding an MCP server
 

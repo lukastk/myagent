@@ -101,11 +101,25 @@ for d in "$PROFILES_ROOT"/*/; do
   rm -rf "$d"
 done
 
-# The MCP server is a direct child of the agent process (verified for pi &
-# claude), so $PPID is the agent PID. Key the profile on it so lazy MCP
-# re-spawns within one session reuse the same seeded profile.
-AGENT_PID="$PPID"
-PROFILE="$PROFILES_ROOT/$AGENT_PID"
+# Local MCP servers are direct children of their agent process (verified for Pi,
+# Claude, and Codex), so $PPID is a stable per-agent owner and lazy MCP re-spawns
+# reuse one profile. A remote SSH transport instead execs from a unique per-channel
+# command shell and passes that shell's PID explicitly: multiplexed SSH channels
+# share an sshd parent, so raw $PPID would collide. Accept only a live canonical
+# decimal PID (>= 2, no leading zero), without applying shell arithmetic to the
+# caller-influenced text, so the target-local kill(0) GC invariant remains safe.
+PROFILE_OWNER_PID="${BRAVE_CDP_PROFILE_OWNER_PID:-$PPID}"
+case "$PROFILE_OWNER_PID" in
+  ''|0|1|0*|*[!0-9]*)
+    log "invalid BRAVE_CDP_PROFILE_OWNER_PID '$PROFILE_OWNER_PID' (expected a canonical decimal PID >= 2)"
+    exit 64
+    ;;
+esac
+if ! kill -0 "$PROFILE_OWNER_PID" 2>/dev/null; then
+  log "profile owner PID '$PROFILE_OWNER_PID' is not alive"
+  exit 70
+fi
+PROFILE="$PROFILES_ROOT/$PROFILE_OWNER_PID"
 
 # Seed a logged-in profile copy if we don't have one yet. Cheap: just the
 # encryption key (Local State) + cookie DBs + small prefs/login data, and a
@@ -119,7 +133,7 @@ if [ ! -d "$PROFILE/Default" ]; then
   done
   cp "$BASE_PROFILE/Default/Network/Cookies" "$PROFILE/Default/Network/" 2>/dev/null
   ln -s "$BASE_PROFILE/Default/Extensions" "$PROFILE/Default/Extensions" 2>/dev/null
-  log "seeded isolated profile $PROFILE (agent pid $AGENT_PID)"
+  log "seeded isolated profile $PROFILE (owner pid $PROFILE_OWNER_PID)"
 fi
 
 # Launch mode: Playwright launches Brave against the persistent seeded profile

@@ -5,14 +5,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
     cat <<EOF
-Usage: ./install.sh [--prune] [--pi-only|--claude-only]
+Usage: ./install.sh [--prune] [--pi-only|--claude-only|--codex-only]
 
-Runs scripts/install-pi.sh followed by scripts/install-claude.sh.
+Runs the Pi, Claude Code, and Codex installers.
 
 Options:
-  --prune        Forwarded to both sub-scripts; removes stale entries.
+  --prune        Forwarded to all selected sub-scripts; removes stale entries.
   --pi-only      Only run scripts/install-pi.sh.
   --claude-only  Only run scripts/install-claude.sh.
+  --codex-only   Only run scripts/install-codex.sh.
   -h, --help     Show this help.
 EOF
 }
@@ -20,6 +21,7 @@ EOF
 PRUNE=false
 RUN_PI=true
 RUN_CLAUDE=true
+RUN_CODEX=true
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -28,9 +30,15 @@ while [ "$#" -gt 0 ]; do
             ;;
         --pi-only)
             RUN_CLAUDE=false
+            RUN_CODEX=false
             ;;
         --claude-only)
             RUN_PI=false
+            RUN_CODEX=false
+            ;;
+        --codex-only)
+            RUN_PI=false
+            RUN_CLAUDE=false
             ;;
         -h|--help)
             usage
@@ -59,4 +67,10 @@ fi
 if [ "$RUN_CLAUDE" = true ]; then
     echo "########## Claude ##########"
     "$SCRIPT_DIR/scripts/install-claude.sh" "${sub_args[@]}"
+    echo ""
+fi
+
+if [ "$RUN_CODEX" = true ]; then
+    echo "########## Codex ##########"
+    "$SCRIPT_DIR/scripts/install-codex.sh" "${sub_args[@]}"
 fi

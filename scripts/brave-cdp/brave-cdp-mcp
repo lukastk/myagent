@@ -97,7 +97,11 @@ for d in "$PROFILES_ROOT"/*/; do
   pid="$(basename "$d")"
   case "$pid" in ''|*[!0-9]*) continue ;; esac     # only numeric (pid) dirs
   kill -0 "$pid" 2>/dev/null && continue           # owner alive — keep
-  pkill -f -- "--user-data-dir=${d%/}" 2>/dev/null
+  # Anchor on a space or end-of-line: pkill -f matches its pattern as an extended
+  # regex against the WHOLE command line, so an unanchored "…/brave-cdp/3674"
+  # also matches — and kills — a live browser whose profile is "…/brave-cdp/36745".
+  # The dir name is numeric (checked above), so it carries no regex metacharacters.
+  pkill -f -- "--user-data-dir=${d%/}"'( |$)' 2>/dev/null
   rm -rf "$d"
 done
 

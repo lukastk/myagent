@@ -565,7 +565,7 @@ apply_core_patch \
 # Symlink the local launcher plus both sides of the allow-listed remote stdio
 # transport next to the persistent Playwright install. mcp.json runs them from
 # this cwd, and a target reached over SSH invokes remote-playwright-host here.
-for launcher_name in brave-cdp-mcp remote-playwright-mcp remote-playwright-host; do
+for launcher_name in brave-cdp-mcp mcp-lazy mcp-lazy-shim remote-playwright-mcp remote-playwright-host; do
     launcher_src="$REPO_ROOT/scripts/brave-cdp/$launcher_name"
     launcher_dest="$PLAYWRIGHT_MCP_DIR/$launcher_name"
     if [ ! -f "$launcher_src" ]; then
@@ -576,6 +576,37 @@ for launcher_name in brave-cdp-mcp remote-playwright-mcp remote-playwright-host;
     ln -sfn "$launcher_src" "$launcher_dest"
     echo "    Linked $launcher_name"
 done
+
+# Warm the mcp-lazy-shim cache: capture the pinned @playwright/mcp initialize +
+# tools/list once (the handshake launches NO browser) so the shim can serve them
+# from cache and skip the ~128 MB Node cli.js for sessions that never browse.
+# Regenerated every install so it always matches the pinned @playwright/mcp
+# version. Best-effort: if it can't be produced, the `mcp-lazy` wrapper falls
+# through to the launcher directly (eager but correct), so this never blocks.
+echo ""
+echo "==> Warming mcp-lazy-shim cache"
+warm_lazy_cache() {
+    command -v python3 >/dev/null 2>&1 || {
+        echo "    WARN: python3 not found; mcp-lazy runs the launcher directly (no lazy shim on this box)" >&2
+        return 0
+    }
+    local dst="$PLAYWRIGHT_MCP_DIR/mcp-lazy-cache.json"
+    local tmp="$dst.tmp.$$"
+    if ! ( cd "$PLAYWRIGHT_MCP_DIR" && BRAVE_CDP_HEADLESS=1 timeout 90 \
+             python3 mcp-lazy-shim --warm bash brave-cdp-mcp ) > "$tmp" 2>/dev/null; then
+        rm -f "$tmp"
+        echo "    WARN: warm run failed; mcp-lazy runs the launcher directly (eager) until next install" >&2
+        return 0
+    fi
+    if ! python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["initialize_result"]["serverInfo"]["name"] and d["tools_result"]["tools"]' "$tmp" 2>/dev/null; then
+        rm -f "$tmp"
+        echo "    WARN: warm output invalid; mcp-lazy runs the launcher directly (eager) until next install" >&2
+        return 0
+    fi
+    mv "$tmp" "$dst"
+    echo "    Warmed cache ($(python3 -c 'import json,sys;print(len(json.load(open(sys.argv[1]))["tools_result"]["tools"]))' "$dst") tools) -> $dst"
+}
+warm_lazy_cache
 
 echo ""
 echo "==> Installing external extensions"

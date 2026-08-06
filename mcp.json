@@ -2,7 +2,7 @@
   "mcpServers": {
     "playwright": {
       "command": "bash",
-      "args": ["brave-cdp-mcp"],
+      "args": ["mcp-lazy", "bash", "brave-cdp-mcp"],
       "cwd": "~/.local/playwright-mcp",
       "lifecycle": "lazy",
       "directTools": true

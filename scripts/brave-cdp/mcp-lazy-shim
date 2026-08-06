@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+"""
+mcp-lazy-shim — a lazy stdio-MCP proxy that defers spawning a heavyweight MCP
+server until its tools are actually used.
+
+Why: Claude Code and Codex spawn every configured stdio MCP server EAGERLY at
+session start, and neither has a lazy/on-demand option (only Pi honours
+lifecycle:lazy). For @playwright/mcp that means a resident ~128 MB Node process
+per session even when the session never browses. Under a many-session sweep on
+mymain that standing memory (plus the inert playwright-main class) exhausted swap
+and rebooted the box (2026-08-06). This shim replaces that idle ~128 MB with an
+~12 MB Python process until the first real tool call.
+
+What it does:
+  * answers `initialize`, `tools/list`, `ping` itself from a cached static
+    snapshot (see cache format below) — spawning NOTHING;
+  * on the first request that needs the real server (a `tools/call`, or anything
+    not served from cache) it lazily spawns the downstream command, does a private
+    MCP handshake with it (replaying the client's initialize params, swallowing
+    the downstream's init response), forwards the triggering request, then becomes
+    a transparent full-duplex byte pipe for the rest of the session;
+  * if the cache is missing/corrupt it runs EAGER: spawn downstream immediately
+    and relay transparently — correctness never depends on the cache.
+
+Normally invoked via the `mcp-lazy` bash wrapper (which only calls this when
+python3 and a warmed cache exist, else falls through to the launcher directly), so
+this process runs in LAZY mode; the EAGER path is a belt-and-suspenders fallback.
+
+Usage:
+    mcp-lazy-shim <downstream cmd...>          # lazy (needs a cache) / eager
+    mcp-lazy-shim --warm <downstream cmd...>   # emit a cache snapshot to stdout
+
+Env:
+    MCP_LAZY_CACHE   cache path (default: mcp-lazy-cache.json next to this script)
+    MCP_LAZY_DEBUG   =1 to log each client method + cache-served vs activation
+    MCP_LAZY_SPAWN_LOG  path; a line is appended when the downstream is activated
+                        (observability / tests)
+
+Cache format: {"initialize_result": {...}, "tools_result": {...}}
+"""
+
+import os
+import sys
+import json
+import subprocess
+
+STDIN_FD = 0
+STDOUT_FD = 1
+PRIVATE_INIT_ID = "_shim_init_"
+DEBUG = os.environ.get("MCP_LAZY_DEBUG") == "1"
+
+
+def log(*a):
+    print("[mcp-lazy-shim]", *a, file=sys.stderr, flush=True)
+
+
+def dbg(*a):
+    if DEBUG:
+        log(*a)
+
+
+def write_all(fd, data: bytes):
+    """os.write can short-write to a pipe; loop until it's all out."""
+    while data:
+        n = os.write(fd, data)
+        data = data[n:]
+
+
+def send_json(fd, obj):
+    write_all(fd, (json.dumps(obj) + "\n").encode())
+
+
+class LineReader:
+    """Newline-delimited reader over a raw fd. Retains any residual buffered
+    bytes read past the last consumed line so a LAZY->ACTIVE handoff never drops
+    pipelined client input."""
+
+    def __init__(self, fd, chunk=65536):
+        self.fd = fd
+        self.chunk = chunk
+        self.buf = b""
+        self.eof = False
+
+    def read_line(self):
+        while b"\n" not in self.buf:
+            data = os.read(self.fd, self.chunk)
+            if not data:
+                self.eof = True
+                if self.buf:
+                    line, self.buf = self.buf, b""
+                    return line
+                return None
+            self.buf += data
+        line, self.buf = self.buf.split(b"\n", 1)
+        return line
+
+    def residual(self):
+        r, self.buf = self.buf, b""
+        return r
+
+
+def spawn(cmd):
+    dbg("spawning downstream:", " ".join(cmd))
+    marker = os.environ.get("MCP_LAZY_SPAWN_LOG")
+    if marker:
+        try:
+            with open(marker, "a") as f:
+                f.write(f"activated pid={os.getpid()} cmd={' '.join(cmd)}\n")
+        except Exception:
+            pass
+    return subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=None, bufsize=0)
+
+
+def downstream_handshake(proc, client_params):
+    """Replay the client's initialize to the freshly-spawned downstream under a
+    private id, swallow its initialize response, send notifications/initialized.
+    Returns residual downstream bytes read past the init response (to flush to the
+    client before relay)."""
+    din = proc.stdin.fileno()
+    dr = LineReader(proc.stdout.fileno())
+    send_json(din, {"jsonrpc": "2.0", "id": PRIVATE_INIT_ID,
+                    "method": "initialize", "params": client_params})
+    while True:
+        line = dr.read_line()
+        if line is None:
+            log("downstream closed during handshake")
+            sys.exit(70)
+        s = line.strip()
+        if not s:
+            continue
+        try:
+            m = json.loads(s)
+        except Exception:
+            continue
+        if m.get("id") == PRIVATE_INIT_ID:
+            break  # swallow — client already got its initialize result from cache
+        if m.get("id") is None:  # a pre-init notification from downstream: relay
+            write_all(STDOUT_FD, line + b"\n")
+    send_json(din, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+    return dr.residual()
+
+
+def relay(proc, residual_down=b""):
+    """Transparent full-duplex byte pump: client<->downstream until either EOF."""
+    import selectors
+    din = proc.stdin.fileno()
+    dout = proc.stdout.fileno()
+    if residual_down:
+        write_all(STDOUT_FD, residual_down)
+    sel = selectors.DefaultSelector()
+    sel.register(STDIN_FD, selectors.EVENT_READ, "client")
+    sel.register(dout, selectors.EVENT_READ, "down")
+    while True:
+        for key, _ in sel.select():
+            if key.data == "client":
+                data = os.read(STDIN_FD, 65536)
+                if not data:
+                    sel.unregister(STDIN_FD)
+                    try:
+                        proc.stdin.close()  # signal EOF downstream
+                    except Exception:
+                        pass
+                    continue
+                write_all(din, data)
+            else:
+                data = os.read(dout, 65536)
+                if not data:
+                    proc.wait()
+                    return
+                write_all(STDOUT_FD, data)
+
+
+def load_cache(path):
+    try:
+        with open(path) as f:
+            c = json.load(f)
+        if "initialize_result" not in c or "tools_result" not in c:
+            raise ValueError("missing initialize_result/tools_result")
+        return c
+    except Exception as e:
+        log(f"no usable cache at {path!r} ({e}); running EAGER pass-through")
+        return None
+
+
+def run_lazy(cmd, cache):
+    reader = LineReader(STDIN_FD)
+    client_params = {}
+    while True:
+        line = reader.read_line()
+        if line is None:
+            dbg("client EOF before activation; nothing spawned")
+            return
+        s = line.strip()
+        if not s:
+            continue
+        try:
+            msg = json.loads(s)
+        except Exception as e:
+            log(f"bad json from client: {e}")
+            continue
+        mid = msg.get("id")
+        method = msg.get("method")
+
+        if method == "initialize":
+            client_params = msg.get("params", {}) or {}
+            res = dict(cache["initialize_result"])
+            pv = client_params.get("protocolVersion")
+            if pv:
+                res["protocolVersion"] = pv  # echo the client's negotiated version
+            send_json(STDOUT_FD, {"jsonrpc": "2.0", "id": mid, "result": res})
+            dbg("initialize -> served from cache")
+        elif method == "tools/list":
+            send_json(STDOUT_FD, {"jsonrpc": "2.0", "id": mid,
+                                  "result": cache["tools_result"]})
+            dbg("tools/list -> served from cache")
+        elif method == "ping":
+            send_json(STDOUT_FD, {"jsonrpc": "2.0", "id": mid, "result": {}})
+            dbg("ping -> served from cache")
+        elif mid is None:
+            dbg(f"notification {method!r} -> swallowed (no downstream yet)")
+        else:
+            dbg(f"{method!r} -> ACTIVATING downstream")
+            proc = spawn(cmd)
+            resid_down = downstream_handshake(proc, client_params)
+            send_json(proc.stdin.fileno(), msg)          # the triggering request
+            resid_client = reader.residual()
+            if resid_client:
+                write_all(proc.stdin.fileno(), resid_client)
+            relay(proc, resid_down)
+            return
+
+
+def run_eager(cmd):
+    """Fallback: no cache -> spawn now and relay from the start (still correct)."""
+    proc = spawn(cmd)
+    relay(proc)
+
+
+def do_warm(cmd):
+    """Drive the downstream through initialize + tools/list and print a cache
+    snapshot to stdout. No tool call -> no browser launched."""
+    proc = spawn(cmd)
+    din = proc.stdin.fileno()
+    dr = LineReader(proc.stdout.fileno())
+    send_json(din, {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                    "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                               "clientInfo": {"name": "mcp-lazy-shim-warm", "version": "0"}}})
+    send_json(din, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+    send_json(din, {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+    init_result = tools_result = None
+    while init_result is None or tools_result is None:
+        line = dr.read_line()
+        if line is None:
+            break
+        s = line.strip()
+        if not s:
+            continue
+        try:
+            m = json.loads(s)
+        except Exception:
+            continue
+        if m.get("id") == 1:
+            init_result = m.get("result")
+        elif m.get("id") == 2:
+            tools_result = m.get("result")
+    try:
+        proc.stdin.close()
+        proc.wait(timeout=10)
+    except Exception:
+        proc.kill()
+    if init_result is None or tools_result is None:
+        log("warm failed: did not capture both responses")
+        sys.exit(1)
+    json.dump({"initialize_result": init_result, "tools_result": tools_result}, sys.stdout)
+    sys.stdout.write("\n")
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv:
+        log("usage: mcp-lazy-shim [--warm] <downstream cmd...>")
+        sys.exit(64)
+    if argv[0] == "--warm":
+        do_warm(argv[1:])
+        return
+    cmd = argv
+    cache_path = os.environ.get("MCP_LAZY_CACHE") or os.path.join(
+        os.path.dirname(os.path.abspath(sys.argv[0])), "mcp-lazy-cache.json")
+    cache = load_cache(cache_path)
+    try:
+        if cache is None:
+            run_eager(cmd)
+        else:
+            run_lazy(cmd, cache)
+    except BrokenPipeError:
+        try:
+            os.close(STDOUT_FD)
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    main()

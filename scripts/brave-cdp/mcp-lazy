@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#
+# mcp-lazy — thin front for the Playwright MCP launcher that adds LAZY spawning
+# without ever risking a regression.
+#
+# Claude Code and Codex spawn every stdio MCP server eagerly at session start, so
+# a non-browsing session otherwise holds a resident ~128 MB Node @playwright/mcp
+# process. mcp-lazy-shim (Python) defers that until the first tool call. But we
+# must never make browsing depend on python3 being present, so this bash wrapper
+# decides:
+#
+#   * python3 available AND a warmed cache exists -> exec the lazy Python shim;
+#   * otherwise                                    -> exec the downstream launcher
+#     directly (today's behaviour: eager, but browsing works).
+#
+# Invoked from mcp.json as:  bash mcp-lazy bash brave-cdp-mcp   (cwd = the install
+# dir ~/.local/playwright-mcp, where mcp-lazy, mcp-lazy-shim and the warmed
+# mcp-lazy-cache.json all live). "$@" is the full downstream command.
+set -u
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if command -v python3 >/dev/null 2>&1 && [ -f "$DIR/mcp-lazy-cache.json" ]; then
+  exec python3 "$DIR/mcp-lazy-shim" "$@"
+fi
+exec "$@"

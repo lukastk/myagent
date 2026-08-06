@@ -208,3 +208,25 @@ new unauthenticated service or invent a general remote-execution layer.
 
 - *(none for this experiment. Fleet deployment and any future inventory changes
   remain operational follow-up.)*
+
+---
+
+## `03_lazy_mcp_proxy_shim`
+
+**Status:** done (2026-08-06) — shipped.
+
+A different topic from 00–02 (which were about *where* the browser runs): this one
+is about *when the MCP server process is spawned*. Claude Code and Codex spawn every
+stdio MCP server eagerly at session start (no lazy option — only Pi honours
+`lifecycle: lazy`), so every session held a resident ~128 MB Node `@playwright/mcp`
+even when it never browsed. Under a ~20-agent sweep this — plus the inert
+`playwright-main` class (fixed separately by the `:9222` gate, commit `0012850`) —
+exhausted mymain's 4 GB swap and rebooted the box.
+
+**Deliverable:** `mcp-lazy` (bash front) + `mcp-lazy-shim` (Python lazy proxy) that
+serve `initialize`/`tools/list`/`ping` from a warmed cache and only spawn the real
+`@playwright/mcp` on the first tool call — idle RSS ~12 MB vs ~128 MB, and the 12 MB
+stays resident rather than swapping and thrashing. Shipped to `scripts/brave-cdp/`,
+wired into `mcp.json` (isolated `playwright` only) and `install-pi.sh` (symlink +
+`--warm` cache). Validated against the real `@playwright/mcp` and live Claude,
+Codex, and Pi agents. Full writeup in `03_lazy_mcp_proxy_shim/FINDINGS.md`.

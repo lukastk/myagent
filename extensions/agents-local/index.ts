@@ -43,7 +43,10 @@ export default function (pi: ExtensionAPI) {
 
     if (!content) return;
 
+    // before_agent_start is RETURN-based: pi applies handlerResult.systemPrompt and
+    // ignores mutations of `event.systemPrompt`. Returning undefined (the early returns
+    // above) correctly leaves the base prompt untouched.
     const header = "\n\n# Project AGENTS.local.md (personal notes/memories)\n";
-    event.systemPrompt = (event.systemPrompt ?? "") + header + content;
+    return { systemPrompt: (event.systemPrompt ?? "") + header + content };
   });
 }

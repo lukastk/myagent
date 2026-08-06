@@ -239,7 +239,19 @@ def run_eager(cmd):
 
 def do_warm(cmd):
     """Drive the downstream through initialize + tools/list and print a cache
-    snapshot to stdout. No tool call -> no browser launched."""
+    snapshot to stdout. No tool call -> no browser launched. Self-limiting via
+    SIGALRM so it needs no external `timeout` (macOS ships neither timeout nor
+    gtimeout)."""
+    import signal
+
+    def _warm_timeout(*_):
+        log("warm timed out waiting for downstream handshake")
+        sys.exit(1)
+    try:
+        signal.signal(signal.SIGALRM, _warm_timeout)
+        signal.alarm(60)
+    except (AttributeError, ValueError):
+        pass  # SIGALRM unavailable (non-Unix) — proceed without a hard deadline
     proc = spawn(cmd)
     din = proc.stdin.fileno()
     dr = LineReader(proc.stdout.fileno())
@@ -264,6 +276,10 @@ def do_warm(cmd):
             init_result = m.get("result")
         elif m.get("id") == 2:
             tools_result = m.get("result")
+    try:
+        signal.alarm(0)  # captured both responses; cancel the deadline
+    except Exception:
+        pass
     try:
         proc.stdin.close()
         proc.wait(timeout=10)

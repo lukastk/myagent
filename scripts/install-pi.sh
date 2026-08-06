@@ -592,7 +592,7 @@ warm_lazy_cache() {
     }
     local dst="$PLAYWRIGHT_MCP_DIR/mcp-lazy-cache.json"
     local tmp="$dst.tmp.$$"
-    if ! ( cd "$PLAYWRIGHT_MCP_DIR" && BRAVE_CDP_HEADLESS=1 timeout 90 \
+    if ! ( cd "$PLAYWRIGHT_MCP_DIR" && BRAVE_CDP_HEADLESS=1 \
              python3 mcp-lazy-shim --warm bash brave-cdp-mcp ) > "$tmp" 2>/dev/null; then
         rm -f "$tmp"
         echo "    WARN: warm run failed; mcp-lazy runs the launcher directly (eager) until next install" >&2

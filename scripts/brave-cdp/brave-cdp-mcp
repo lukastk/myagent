@@ -71,10 +71,33 @@ exec_connect() {  # $1 = port; remaining args forwarded to the cli
   exec $RUNNER "$CLI" --cdp-endpoint "http://localhost:$port" "$@"
 }
 
+# Is an interactive Brave actually listening on the local CDP port? playwright-main
+# (BRAVE_CDP_REAL=1) is only usable when one is — otherwise the @playwright/mcp Node
+# process would sit resident attached to nothing (~65 MB/session) for a browser no
+# agent can drive. Under a many-session sweep that dead weight reached multiple GB of
+# swap and took the box down (2026-08-06). Portable, dependency-free bash /dev/tcp
+# probe: no ss/curl/lsof/timeout (macOS lacks several), and a refused localhost
+# connect returns instantly so this never hangs a spawn.
+cdp_listener_up() {  # $1 = port; returns 0 iff something accepts a TCP connect on localhost:port
+  local port="$1"
+  case "$port" in ''|*[!0-9]*) return 1 ;; esac      # numeric only; never eval caller-influenced text
+  ( exec 3<>"/dev/tcp/127.0.0.1/$port" ) 2>/dev/null
+}
+
 # --- connect-only modes (opt-out / no launchable Brave; no isolation) ---
 # Attach to the real interactive Brave (e.g. to watch it live).
 if [ "${BRAVE_CDP_REAL:-}" = "1" ]; then
-  exec_connect "${BRAVE_CDP_PORT:-$REAL_PORT}" "$@"
+  port="${BRAVE_CDP_PORT:-$REAL_PORT}"
+  # If no interactive Brave is listening, don't spawn a resident wrapper for a
+  # browser that can't be driven: exit before the MCP handshake so the client marks
+  # the server unavailable (verified: Claude spawns it once, no respawn loop) and no
+  # Node process lingers. Bring up :9222 (run `brave-mcp`) before starting the
+  # session, or reconnect via /mcp, to use playwright-main.
+  if ! cdp_listener_up "$port"; then
+    log "no interactive Brave on :$port — playwright-main inert here; not spawning wrapper"
+    exit 0
+  fi
+  exec_connect "$port" "$@"
 fi
 # Attach to an explicitly-specified already-running CDP endpoint.
 if [ -n "${BRAVE_CDP_PORT:-}" ]; then

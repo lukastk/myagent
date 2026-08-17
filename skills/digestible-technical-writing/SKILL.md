@@ -1,6 +1,7 @@
 ---
 name: digestible-technical-writing
 description: Write and revise technical design documents, specifications, ADRs, implementation plans, API contracts, and review notes so they are self-contained, easy to scan, and understandable without hidden discussion context. Use when drafting a substantial technical document, reorganizing one for cohesion, explaining a complex system to reviewers, or making dense or cryptic technical prose easier to absorb while preserving its decisions and the author's voice.
+disable-model-invocation: true
 ---
 
 # Digestible Technical Writing

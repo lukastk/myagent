@@ -1,6 +1,7 @@
 ---
 name: high-level-rust
 description: Design, implement, refactor, and review application-layer Rust using type-first domains, a functional core with impure adapters, and deliberate ownership choices that reduce lifetime plumbing without cargo-cult cloning. Use for Rust web APIs, CRUD or business services, workflows and state machines, repositories and adapters, DDD or hexagonal Rust, requests for "high-level Rust" or functional Rust, and borrow-checker friction spanning application layers. Do not apply it as a blanket style to kernels, parsers, codecs, games, tight loops, or other measured hot paths.
+disable-model-invocation: true
 ---
 
 # High-Level Rust

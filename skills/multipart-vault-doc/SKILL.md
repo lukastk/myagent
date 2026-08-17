@@ -1,6 +1,7 @@
 ---
 name: multipart-vault-doc
 description: Turn a long document — a design doc, spec, plan, report, research write-up, or any sprawling single file — into a navigable multi-part document set in myvault, so it can be absorbed and iterated section by section. Produces an ordered series of short focused notes plus a TOC/index, with internal wikilinks, prev/next navigation, an optional anchored glossary, and inline HTML/SVG visualizations that render in Obsidian; then a copy script publishes it as a main Document note + Null sub-notes referenced by it. Use when Lukas says things like "break this doc into notes I can read through", "split this spec into the vault", "make a multi-part version of this", "turn DESIGN.md into a doc set in my vault", or wants a long artifact restructured for absorption/review. Delegates all vault/mysystem mechanics to the `myvault` skill.
+disable-model-invocation: true
 ---
 
 # multipart-vault-doc

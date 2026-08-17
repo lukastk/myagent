@@ -1,6 +1,7 @@
 ---
 name: html-slides
 description: Build a self-contained HTML slide deck / presentation from content the user supplies (notes, an outline, a doc, a topic). Use when the user asks to "make slides", "create a presentation / slide deck", "turn this into slides", or "build an HTML presentation". Produces one self-contained .html file (no build step, no dependencies) with keyboard navigation, a 16:9 stage that scales to any screen, automatic y-scroll on overflowing slides, and PDF export. Stores each presentation in its own dated subfolder under `_dev/presentations/`.
+disable-model-invocation: true
 ---
 
 # html-slides

@@ -11,6 +11,7 @@ description: |
   TRUE vector via parametric generators (never auto-trace); (3) fan the production out across
   `sesh` subthreads; (4) VERIFY every asset by rendering it to an image and looking at it
   against a reference. All ideation/process/scratch stays under clean subfolders in `_dev/`.
+disable-model-invocation: true
 ---
 
 # design-asset-pipeline

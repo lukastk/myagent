@@ -1,6 +1,7 @@
 ---
 name: deslop
 description: De-AI-ify writing — detect and remove the tells of LLM-generated prose (em-dash overuse, "it's not just X, it's Y", significance inflation, rule-of-three, AI vocabulary like "delve"/"tapestry"/"load-bearing", current-model structural-metaphor and aphorism tells, chatbot artifacts, low-density "treadmill" padding) and rewrite it to sound like a person. Use when asked to humanize / de-slop / remove AI tells, make text sound less AI / less like ChatGPT / less like Claude, clean up AI-sounding writing, or match the user's own voice. Has use-case profiles for scientific, report, prose, email, and matching the user's informal style, plus a scan-only detect/score mode. Grounded in Wikipedia's "Signs of AI writing".
+disable-model-invocation: true
 ---
 
 # deslop — remove the tells of AI writing

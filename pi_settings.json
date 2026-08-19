@@ -5,19 +5,8 @@
   "defaultProjectTrust": "always",
   "enabledModels": [
     "deepseek/deepseek-v4-pro",
-    "openai-codex/gpt-5.3-codex"
-  ],
-  "sessionModelScopeIds": [
-    "anthropic/claude-opus-4-7",
-    "anthropic/claude-sonnet-4-6",
-    "deepseek/deepseek-v4-pro",
-    "google/gemini-3.1-pro-preview",
-    "moonshotai/kimi-k2.6",
-    "openai-codex/gpt-5.3-codex",
     "openai-codex/gpt-5.5",
-    "openrouter/qwen/qwen3.6-max-preview",
-    "privatemode/gemma-4-31b",
-    "privatemode/gpt-oss-120b",
-    "privatemode/kimi-k2.6"
+    "venice/qwen-3-6-plus",
+    "venice/olafangensan-glm-4.7-flash-heretic"
   ]
 }

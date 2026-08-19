@@ -15,6 +15,9 @@ MCP_DEST_DIR="$HOME/.config/mcp"
 MCP_DEST="$MCP_DEST_DIR/mcp.json"
 MCP_PI_DEST_DIR="$HOME/.pi/agent"
 MCP_PI_DEST="$MCP_PI_DEST_DIR/mcp.json"
+MODELS_CONFIG="$REPO_ROOT/models.json"
+MODELS_PI_DEST_DIR="$HOME/.pi/agent"
+MODELS_PI_DEST="$MODELS_PI_DEST_DIR/models.json"
 STATE_DIR="$REPO_ROOT/.install-state"
 # External extensions are pruned by reconciling `pi list` (reality) against the
 # declared lists — no state file. A state file of "what we installed" structurally
@@ -31,7 +34,7 @@ usage() {
 Usage: scripts/install-pi.sh [--prune]
 
 Installs Pi extensions, local skills (into ~/.agents/skills/), external skills,
-and symlinks mcp.json into Pi's expected locations.
+and symlinks mcp.json and models.json into Pi's expected locations.
 
 Options:
   --prune      Remove stale local symlinks and uninstall previously managed
@@ -397,6 +400,46 @@ if [ -f "$MCP_CONFIG" ]; then
     fi
 else
     echo "    No mcp.json found, skipping."
+fi
+
+echo ""
+echo "==> Installing custom models config"
+
+# models.json declares custom providers/models that Pi's built-in catalogs don't
+# carry. Pi's OpenRouter catalog is NOT OpenRouter's live /v1/models — it is a
+# curated list served from pi.dev (~350 of OpenRouter's ~415 models), so anything
+# pi.dev drops is unreachable no matter what settings.json says. models.json is
+# the supported escape hatch (see pi's docs/models.md).
+#
+# Symlinked rather than merged (unlike settings.json): Pi treats models.json as an
+# immutable, read-only snapshot — it never writes to it — so there is no runtime
+# state to clobber. Pi re-reads the file every time /model is opened, so edits in
+# the repo take effect without restarting Pi.
+#
+# Adopt the path the same way mcp.json does: a stale REGULAR file here would
+# silently shadow the repo config, so back it up and replace it with the symlink.
+if [ -f "$MODELS_CONFIG" ]; then
+    mkdir -p "$MODELS_PI_DEST_DIR"
+    if [ -L "$MODELS_PI_DEST" ]; then
+        existing="$(readlink "$MODELS_PI_DEST")"
+        if [ "$existing" = "$MODELS_CONFIG" ]; then
+            echo "    models.json (already linked)"
+        else
+            echo "    models.json (updating symlink)"
+            rm "$MODELS_PI_DEST"
+            ln -s "$MODELS_CONFIG" "$MODELS_PI_DEST"
+        fi
+    else
+        if [ -e "$MODELS_PI_DEST" ]; then
+            backup="$MODELS_PI_DEST.stale-$(date +%s).bak"
+            echo "    $MODELS_PI_DEST is a non-symlink — backing up to $backup and adopting"
+            mv "$MODELS_PI_DEST" "$backup"
+        fi
+        echo "    models.json -> $MODELS_PI_DEST"
+        ln -s "$MODELS_CONFIG" "$MODELS_PI_DEST"
+    fi
+else
+    echo "    No models.json found, skipping."
 fi
 
 echo ""

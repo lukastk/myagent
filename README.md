@@ -24,6 +24,7 @@ npm install -g @earendil-works/pi-coding-agent
 - Installs external extensions listed in `external_extensions.txt` via `pi install`
 - Installs external skills listed in `external_skills.txt` via `npx skills add <source> -g -y`
 - Applies `mcp.json` to Pi, Claude Code, and Codex
+- Symlinks `models.json` (custom Pi providers/models) into `~/.pi/agent/models.json`
 - With `--prune`, removes stale local symlinks and uninstalls previously managed external entries that are no longer listed
 
 Use `--pi-only`, `--claude-only`, or `--codex-only` to apply only one agent

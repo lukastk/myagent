@@ -1,11 +1,22 @@
 {
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.5",
+  "defaultModel": "gpt-5.6-sol",
   "defaultThinkingLevel": "high",
   "defaultProjectTrust": "always",
   "enabledModels": [
-    "deepseek/deepseek-v4-pro",
+    "anthropic/claude-opus-5",
+    "anthropic/claude-sonnet-5",
+    "openai-codex/gpt-5.6-sol",
+    "openai-codex/gpt-5.6-luna",
+    "openai-codex/gpt-5.6-terra",
     "openai-codex/gpt-5.5",
+    "openrouter/deepseek/deepseek-v4-pro",
+    "openrouter/z-ai/glm-5.2",
+    "openrouter/moonshotai/kimi-k3",
+    "google/gemini-3.1-pro-preview",
+    "openrouter/qwen/qwen3.6-max-preview",
+    "privatemode/gpt-oss-120b",
+    "privatemode/kimi-k2.6",
     "venice/qwen-3-6-plus",
     "venice/olafangensan-glm-4.7-flash-heretic"
   ]

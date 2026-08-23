@@ -365,6 +365,26 @@ similar. A symlink would push that runtime churn back into this repo on every
 launch; a wholesale copy would wipe it. The overlay keeps this file a clean,
 minimal statement of desired settings while letting Pi manage its own state.
 
+**`tuiMode: "fullscreen"`** is declared here so the wheel scrolls Pi's transcript
+inside tmux. It is the ONLY reason the setting is set. Pi's `regular` mode renders
+inline on the normal screen and never asks the terminal for mouse tracking, so
+inside mycockpit tmux keeps the wheel for itself and you land in copy-mode;
+`fullscreen` takes the alternate screen and enables SGR mouse tracking
+(`?1002h`+`?1006h`), which is exactly what Claude Code does and why Claude Code
+alone used to scroll properly there. Verified 2026-08-23 by injecting real SGR
+wheel events into a tmux client: the transcript scrolled in place and tmux did not
+enter copy-mode. myrig's `AGENTS.md` carries the full cross-agent picture and the
+matching tmux-side bindings for codex.
+
+Two costs, both accepted deliberately. Pi upstream still labels fullscreen
+**experimental** (its `/settings` → "TUI mode" entry says so), and while it runs
+the transcript lives in the alt screen, so it is NOT in tmux's scrollback and
+`capture-pane` sees only the visible screen — hence
+**`fullscreenExitOutput: "transcript"`** alongside it, which prints the
+conversation back into the terminal on exit instead of a bare resume hint. To
+A/B the two modes without editing anything, use `/settings` → "TUI mode" in a
+live session, or `pi --tui-mode regular`.
+
 **`packages`** is deliberately **not** declared here: the installed-extension
 list is owned by `external_extensions.txt` (+ the mac variant), applied via
 `pi install` in the step above. Declaring it here too would recreate a

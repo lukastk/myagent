@@ -3,6 +3,8 @@
   "defaultModel": "gpt-5.6-sol",
   "defaultThinkingLevel": "high",
   "defaultProjectTrust": "always",
+  "tuiMode": "fullscreen",
+  "fullscreenExitOutput": "transcript",
   "enabledModels": [
     "anthropic/claude-opus-5",
     "anthropic/claude-sonnet-5",

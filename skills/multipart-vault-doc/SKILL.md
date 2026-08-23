@@ -133,58 +133,58 @@ Note **content is stored UTF-16LE** (path-keys are ASCII), so decode with both b
 `↑ Index]]` footer, then diff (normalizing `[[wikilinks]]`) against the current version to isolate
 their additions.
 
-## Review loop: comment threads
+## Review loop: convos
 
-Lukas reads and annotates in the vault using **comment threads** — the mysystem-wide convention
-(full grammar, CLI verbs, and tick etiquette live in the **`myvault` skill, "Comment threads"
-section**; read that first). In short: comments are `> [!me]` / `> [!agent]` callouts; a thread
+Lukas reads and annotates in the vault using **convos** — the mysystem-wide convention
+(full grammar, CLI verbs, and tick etiquette live in the **`myvault` skill, "Convos"
+section**; read that first). In short: comments are `> [!me]` / `> [!agent]` callouts; a convo
 head carries `t:<id>` in the callout metadata (`> [!me|t:9f3a]`); id-less comment callouts
-directly below belong to the thread; a `✓` metadata token means the comment is TICKED (addressed).
+directly below belong to the convo; a `✓` metadata token means the comment is TICKED (addressed).
 
 **Respond IN-THREAD, inline in the note.** Reply to each of Lukas's comments as an `agent`
-comment in the same thread, then tick the comment you addressed — never your own:
+comment in the same convo, then tick the comment you addressed — never your own:
 
 ```bash
-# What do I owe a response to? (threads with turn: "you"; shows each comment's ref)
+# What do I owe a response to? (convos with turn: "you"; shows each comment's ref)
 mysystem --vault "$OBAKO_VAULT_PATH" cmds list-comments "<note>" --json
 
-# Reply in-thread (ALWAYS attribute yourself via --by: claude, codex, …),
+# Reply in-convo (ALWAYS attribute yourself via --by: claude, codex, …),
 # then tick the comment you answered (ref from list-comments)
-mysystem --vault "$OBAKO_VAULT_PATH" cmds add-comment "<note>" <thread-id> "Response…" --author agent --by claude
-mysystem --vault "$OBAKO_VAULT_PATH" cmds tick-comment "<note>" --ref=<thread-id>#<n>
+mysystem --vault "$OBAKO_VAULT_PATH" cmds add-comment "<note>" <convo-id> "Response…" --author agent --by claude
+mysystem --vault "$OBAKO_VAULT_PATH" cmds tick-comment "<note>" --ref=<convo-id>#<n>
 ```
 
 To fix your own comment afterwards use `cmds edit-comment "<note>" "New text" --ref=…`
 (or `cmds delete-comment`) — never hand-edit callout blocks.
 
-**Title the threads you touch.** A thread's title is the callout-title text on its first
-comment; **if a thread has none, add a concise topic** while you're responding —
-`cmds set-thread-title "<note>" --thread=<id> --title="Short topic"` — it's what Lukas sees
+**Title the convos you touch.** A convo's title is the callout-title text on its first
+comment; **if a convo has none, add a concise topic** while you're responding —
+`cmds set-convo-title "<note>" --convo=<id> --title="Short topic"` — it's what Lukas sees
 in the Comment Browser and the banner/floating pill while scrolling long part-notes.
 
 This replaces the pre-2026-07-11 convention of a separate "Claude responses pad" wired up with
 `^lk-`/`^cl-` block references and `- [d] me` task markers. **Do not create response pads or
 block-ref wiring for new review rounds.** Old doc sets may still carry the legacy markup — leave
-it as-is; only new dialogue uses threads.
+it as-is; only new dialogue uses convos.
 
 **Referring to a specific comment** (across part-notes, in commit messages, tickets): use the
-ref convention `<thread-id>#<n>` (1-based position in the thread), note-qualified as
+ref convention `<convo-id>#<n>` (1-based position in the convo), note-qualified as
 `[[<part-note>]]::9f3a#2`. `list-comments` prints each comment's ref.
 
 **Sweep the whole set.** Comments can sit in any part-note plus the index/TOC note. Run
 `list-comments` over every note of the set (or use the vault-wide Comment Inbox) and finish the
-round only when **no thread anywhere in the set is "your turn"**.
+round only when **no convo anywhere in the set is "your turn"**.
 
 **Any todo item you write should be an untracked task `- [+]`, never a regular `- [ ]`.**
 Unless Lukas explicitly asks for a *tracked* task, write todos as untracked (`- [+]`) — regular
 `- [ ]` tasks flow into his real tracked task system and would overflow it. Untracked toggling:
 `- [+]` (todo) → `- [P]` (done) → `- [p]` (skipped). Full legend in `mysystem/src/task-config.ts`.
 
-**Freeze publishing during an open review round.** Comment threads live in the *generated*
+**Freeze publishing during an open review round.** Convos live in the *generated*
 notes, and re-running the copy script regenerates them clean — republishing mid-round silently
 destroys the entire dialogue. Resolve the round first (answer + tick everything, fold accepted
 changes into the local source), then bump the version (V2 → V3) and republish clean. If a
-resolved round's dialogue is worth keeping, archive the threads into a durable pad (parented to
+resolved round's dialogue is worth keeping, archive the convos into a durable pad (parented to
 the Ideation chronology, with a numbered entry there) before republishing.
 
 ## Ideation chronology
@@ -207,7 +207,7 @@ regenerated); the fastest "what exists / where are we" index for the project.
 ## Pointing Lukas at a note (Obsidian URI)
 
 When you want Lukas to open something you produced — the index/main doc, a sub-note, or a
-specific thread you replied to — **write out the full `obsidian://adv-uri` link as plain
+specific convo you replied to — **write out the full `obsidian://adv-uri` link as plain
 text on its own line**, never a markdown link or backticks (he usually can't click those). The
 full format and params live in the `myvault` skill ("Showing a note to the user"); the shape is:
 

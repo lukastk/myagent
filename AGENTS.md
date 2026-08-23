@@ -42,8 +42,8 @@ plus `ssh-macstudio`, `ssh-mymain-root`, `ssh-kindle`. Pickers: `tssh [machine]`
 Non-interactive ssh doesn't load login-shell functions — to call one (e.g.
 `myrig-reinstall-home`) prepend `source ~/.myrig/utils.sh &&`.
 
-For the full machine inventory, the desktop-enabled `mymain` box, the cross-machine
-tmux cockpit, and the rest of my setup/tooling, **use the `mysetup-navigator`
+For the full machine inventory, the desktop-enabled `mymain` box, **mycockpit** (the
+cross-machine tmux cockpit), and the rest of my setup/tooling, **use the `mysetup-navigator`
 skill** (its "SSHing into the machines" section is the source of truth here).
 
 ## Repo structure

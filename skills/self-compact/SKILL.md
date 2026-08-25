@@ -30,16 +30,41 @@ message in your fresh, compacted context.
 
 ## Protocol
 
-### 1. Resolve your own thread id
+### 1. Resolve your own thread id — and REFUSE unless it is pane-verified
 
 ```zsh
-TID=$(sesh info --json | jq -r '.thread.id')
+sesh info --json > /tmp/self-compact-info.json || exit 1
+TID=$(jq -r 'select(.source == "pane") | .thread.id' /tmp/self-compact-info.json)
+[ -n "$TID" ] || { echo "not pane-verified — refusing to self-compact"; exit 1; }
 ```
 
-`sesh info` infers the current thread from the calling pane's marker (more reliable than
-`$SESH_THREAD_ID`, which is frozen at launch and can drift after adopt/reparent). If it
-errors, you are **not in a sesh thread** — stop and tell the user this skill can't work
-here. Also check `sesh info --json | jq -r '.head'` is `headful` if in doubt.
+**The `select(.source == "pane")` is load-bearing. Do not drop it.** `sesh info` reports
+*how* it worked out which thread you are:
+
+- **`pane`** — read from the `@sesh-thread-id` marker on the tmux pane this command
+  actually runs in. Verified, and the only provenance this skill may act on.
+- **`env`** — there was no tmux pane, so the answer rests on `$SESH_THREAD_ID` alone.
+  That variable is frozen at launch and **inherited by every descendant**, so a detached
+  or background process (a claude bg job/agent, hosted by a machine-global
+  `claude daemon run` that froze whichever pane started it) carries a perfectly *valid*
+  id belonging to an **unrelated thread**.
+
+This is not hypothetical. On 2026-08-25 an agent ran this skill from a background job with
+no pane; `sesh info` returned an unrelated thread's id, and the runner below **compacted
+that thread and injected this handover prompt into it** — destroying a stranger's context
+mid-task. sesh now refuses outright when the id is contradicted by your working directory,
+but corroboration is evidence, not proof: an inherited id naming a thread in the *same*
+directory tree still resolves as `env`. Requiring `pane` is what actually closes it.
+
+If `TID` is empty you are **not in a pane-verified sesh thread** — stop and tell the user
+this skill can't work here, rather than compacting whatever id happened to be lying
+around. Sanity-check the target is really you before firing:
+
+```zsh
+jq -r '"\(.thread.name) — \(.thread.cwd) — \(.head)"' /tmp/self-compact-info.json
+```
+
+`head` must be `headful` (a headless thread has no pane to type into).
 
 ### 2. Write the handover prompt to a tmp file
 

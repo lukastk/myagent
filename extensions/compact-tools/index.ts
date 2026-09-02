@@ -267,7 +267,7 @@ class ToolOutputSplitPane implements Component {
 	) {}
 
 	handleInput(data: string): void {
-		if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c")) || matchesKey(data, "ctrl+alt+o")) {
+		if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c")) || matchesKey(data, "ctrl+shift+t")) {
 			this.onClose();
 			return;
 		}
@@ -691,7 +691,7 @@ export default function (pi: ExtensionAPI) {
 		record.preview = previewText(record.output);
 	});
 
-	pi.registerShortcut("ctrl+alt+o", {
+	pi.registerShortcut("ctrl+shift+t", {
 		description: "Toggle compact tool split pane",
 		handler: async (ctx) => {
 			await toggleSplitPane(ctx);

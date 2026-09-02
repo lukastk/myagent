@@ -75,7 +75,7 @@ export default function (pi: ExtensionAPI) {
 			"message-barrel-indicator",
 			[
 				ctx.ui.theme.fg("warning", `⚠ ${barrel.length} ${itemLabel} in barrel`),
-				ctx.ui.theme.fg("muted", "Press Ctrl+Alt+B or run /barrel to paste"),
+				ctx.ui.theme.fg("muted", "Press Ctrl+Shift+B or run /barrel to paste"),
 			],
 			{ placement: "belowEditor" },
 		);
@@ -142,14 +142,14 @@ export default function (pi: ExtensionAPI) {
 		}
 	}
 
-	pi.registerShortcut("ctrl+alt+n", {
+	pi.registerShortcut("ctrl+shift+s", {
 		description: "Save editor text to message barrel",
 		handler: async (ctx) => {
 			saveCurrentEditorToBarrel(ctx);
 		},
 	});
 
-	pi.registerShortcut("ctrl+alt+b", {
+	pi.registerShortcut("ctrl+shift+b", {
 		description: "Pick and paste a message from barrel",
 		handler: async (ctx) => {
 			await pickAndPasteFromBarrel(ctx);

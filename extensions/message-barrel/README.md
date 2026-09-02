@@ -4,8 +4,8 @@ Save draft messages and paste them later into the input editor.
 
 ## Shortcuts
 
-- `Ctrl+Alt+N` — save current editor text into the barrel and clear the editor
-- `Ctrl+Alt+B` — open barrel picker and paste the selected message at the current cursor position
+- `Ctrl+Shift+S` — save current editor text into the barrel and clear the editor
+- `Ctrl+Shift+B` — open barrel picker and paste the selected message at the current cursor position
 
 ## Commands
 

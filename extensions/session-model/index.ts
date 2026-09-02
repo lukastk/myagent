@@ -9,10 +9,17 @@
  *   `/smodel`               - show a selector to pick a model (session only)
  *   `/smodel claude-sonnet`  - fuzzy-match and switch directly
  *
- * Keyboard shortcuts:
- *   Ctrl+Alt+L       - open the /smodel selector (mirrors Ctrl+L for /model)
- *   Ctrl+Alt+P       - cycle to next scoped model (session only)
- *   Shift+Ctrl+Alt+P - cycle to previous scoped model (session only)
+ * Keyboard shortcuts (Ctrl+Shift, not Ctrl+Alt — see the note below):
+ *   Ctrl+Shift+L - open the /smodel selector (shift-sibling of Ctrl+L for /model)
+ *   Ctrl+Shift+P - cycle to next scoped model (session only)
+ *   Ctrl+Shift+K - cycle to previous scoped model (session only)
+ *
+ * Why Ctrl+Shift and not Ctrl+Alt: inside the cross-machine tmux cockpit, tmux
+ * has no Super modifier, so it folds Super/Cmd into Meta before pi sees a key.
+ * That makes every desktop Ctrl+Super+X (Hyprland) / Ctrl+Cmd+X (macOS) chord
+ * arrive as Ctrl+Alt+X and collide with Alt-based shortcuts. Ctrl+Shift is
+ * immune (a fold only ever produces an Alt-combo) and is free of every
+ * terminal/compositor binding on the fleet (foot, Ghostty, Hyprland, skhd, tmux).
  *
  * Scope comes from `ctx.scopedModels` (pi's resolved `enabledModels`). Edit
  * the scope with pi's built-in `/scoped-models` command — this extension only
@@ -64,7 +71,7 @@ async function getAvailableModels(ctx: ExtensionContext): Promise<ModelChoice[]>
 
 /**
  * Open the /smodel selector. Shared between the `/smodel` command and the
- * Ctrl+Alt+L shortcut.
+ * Ctrl+Shift+L shortcut.
  */
 async function runSmodelSelector(
   pi: ExtensionAPI,
@@ -125,23 +132,23 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // Keyboard shortcut: Ctrl+Alt+L — open the /smodel selector
-  // (mirrors pi's built-in Ctrl+L which opens /model).
-  pi.registerShortcut("ctrl+alt+l", {
+  // Keyboard shortcut: Ctrl+Shift+L — open the /smodel selector
+  // (shift-sibling of pi's built-in Ctrl+L which opens /model).
+  pi.registerShortcut("ctrl+shift+l", {
     description: "Open /smodel selector (session only)",
     handler: async (ctx) => {
       await runSmodelSelector(pi, ctx, "");
     },
   });
 
-  // Keyboard shortcut: Ctrl+Alt+P — cycle to next model (session only)
-  pi.registerShortcut("ctrl+alt+p", {
+  // Keyboard shortcut: Ctrl+Shift+P — cycle to next model (session only)
+  pi.registerShortcut("ctrl+shift+p", {
     description: "Cycle to next model (session only)",
     handler: async (ctx) => cycleToModel(pi, ctx, "forward"),
   });
 
-  // Keyboard shortcut: Shift+Ctrl+Alt+P — cycle to previous model (session only)
-  pi.registerShortcut("shift+ctrl+alt+p", {
+  // Keyboard shortcut: Ctrl+Shift+K — cycle to previous model (session only)
+  pi.registerShortcut("ctrl+shift+k", {
     description: "Cycle to previous model (session only)",
     handler: async (ctx) => cycleToModel(pi, ctx, "backward"),
   });

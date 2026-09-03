@@ -7,6 +7,7 @@ lukastk/boxyard@boxyard-cli
 lukastk/myrig@mysetup-navigator
 lukastk/appgarden@appgarden
 lukastk/mysystem@myvault
+lukastk/mysystem@convo-review
 lukastk/sesh@sesh-cli
 lukastk/sesh@do-tickets
 lukastk/mysrs@mysrs-cards

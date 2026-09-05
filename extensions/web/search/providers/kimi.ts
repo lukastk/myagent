@@ -98,9 +98,7 @@ async function callKimiSearch(
 export async function searchKimi(params: KimiSearchParams): Promise<SearchResponse> {
 	const apiKey = await findApiKey();
 	if (!apiKey) {
-		throw new Error(
-			"Kimi search credentials not found. Set MOONSHOT_SEARCH_API_KEY, KIMI_SEARCH_API_KEY, or MOONSHOT_API_KEY.",
-		);
+		throw new Error("Kimi search credentials not found. Set MOONSHOT_SEARCH_API_KEY or KIMI_SEARCH_API_KEY.");
 	}
 
 	const limit = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);

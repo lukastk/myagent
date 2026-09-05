@@ -6,7 +6,7 @@ Three tools for Pi: **web search**, **URL fetch**, and **browser automation**. T
 
 ### `web_search`
 
-Searches the web using whichever provider has an API key configured. Providers are tried in fallback order — if one fails, the next is attempted automatically.
+Searches the web using whichever provider has credentials configured. Providers are tried in fallback order — if one fails or returns no usable results, the next is attempted automatically.
 
 **Parameters:**
 - `query` (required) — search query
@@ -53,23 +53,25 @@ Headless browser automation via Puppeteer with 14 anti-detection stealth scripts
 
 ## Search Providers
 
-Set the corresponding env var to enable a provider. The fallback order is listed below — the first available provider is used.
+Environment variables enable providers directly. On mysetup machines, the extension also discovers matching entries through `secret list` and retrieves them on demand with `secret get` at the first search. Retrieved values remain inside the extension and are not exported to Pi or its child processes.
 
-| Priority | Provider | Env Var |
+| Priority | Provider | Credential names |
 |---|---|---|
 | 1 | Tavily | `TAVILY_API_KEY` |
 | 2 | Perplexity | `PERPLEXITY_API_KEY` |
 | 3 | Brave | `BRAVE_API_KEY` |
 | 4 | Jina | `JINA_API_KEY` |
 | 5 | Kimi | `KIMI_SEARCH_API_KEY` or `MOONSHOT_SEARCH_API_KEY` |
-| 6 | Anthropic | `ANTHROPIC_API_KEY` |
+| 6 | Anthropic | `ANTHROPIC_API_KEY` or `MY_ANTHROPIC_API_KEY` |
 | 7 | Gemini | `GEMINI_API_KEY` |
-| 8 | Codex (OpenAI) | `OPENAI_API_KEY` |
+| 8 | Codex (OpenAI) | `OPENAI_API_KEY` or `MY_OPENAI_API_KEY` |
 | 9 | Z.AI | `ZAI_API_KEY` |
 | 10 | Exa | `EXA_API_KEY` |
 | 11 | Parallel | `PARALLEL_API_KEY` |
 | 12 | Kagi | `KAGI_API_KEY` |
 | 13 | Synthetic | `SYNTHETIC_API_KEY` |
+
+If `secret` is not installed, search remains environment-only. Failures from an installed `secret` command are surfaced rather than silently treating a broken vault lookup as missing credentials.
 
 ## Other Env Vars
 

@@ -3,6 +3,7 @@
  */
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type, StringEnum } from "@earendil-works/pi-ai";
+import { ensureSearchProviderCredentials } from "../lib/env-keys.js";
 import { SEARCH_SYSTEM_PROMPT, SEARCH_TOOL_DESCRIPTION } from "../prompts/search.js";
 import { getSearchProvider, resolveProviderChain, type SearchProvider } from "./provider.js";
 import type { SearchProviderId, SearchResponse } from "./types.js";
@@ -133,11 +134,23 @@ function formatForLLM(response: SearchResponse): string {
 	return parts.join("\n");
 }
 
+function hasRenderableSearchContent(response: SearchResponse): boolean {
+	return Boolean(
+		response.answer?.trim() ||
+			response.sources.length > 0 ||
+			response.citations?.length ||
+			response.relatedQuestions?.some(question => question.trim()) ||
+			response.searchQueries?.some(query => query.trim()),
+	);
+}
+
 /** Execute web search with provider fallback. */
 async function executeSearch(
 	_toolCallId: string,
 	params: SearchQueryParams,
+	signal?: AbortSignal,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details: Record<string, unknown> }> {
+	await ensureSearchProviderCredentials();
 	const providers =
 		params.provider && params.provider !== "auto"
 			? (await getSearchProvider(params.provider).isAvailable())
@@ -145,11 +158,9 @@ async function executeSearch(
 				: await resolveProviderChain("auto")
 			: await resolveProviderChain();
 	if (providers.length === 0) {
-		const message = "No web search provider configured.";
-		return {
-			content: [{ type: "text" as const, text: `Error: ${message}` }],
-			details: { response: { provider: "none", sources: [] }, error: message },
-		};
+		throw new Error(
+			"No web search provider is configured in the environment or the mysetup secret vault.",
+		);
 	}
 
 	let lastError: unknown;
@@ -166,8 +177,12 @@ async function executeSearch(
 				maxOutputTokens: params.max_tokens,
 				numSearchResults: params.num_search_results,
 				temperature: params.temperature,
+				signal,
 			});
 
+			if (!hasRenderableSearchContent(response)) {
+				throw new SearchProviderError(provider.id, `${provider.label} returned no search results.`, 204);
+			}
 			const text = formatForLLM(response);
 
 			return {
@@ -175,6 +190,7 @@ async function executeSearch(
 				details: { response },
 			};
 		} catch (error) {
+			signal?.throwIfAborted();
 			lastError = error;
 		}
 	}
@@ -185,10 +201,7 @@ async function executeSearch(
 			? `All web search providers failed (${formatProviderList(providers)}). Last error: ${baseMessage}`
 			: baseMessage;
 
-	return {
-		content: [{ type: "text" as const, text: `Error: ${message}` }],
-		details: { response: { provider: lastProvider.id, sources: [] }, error: message },
-	};
+	throw new Error(message);
 }
 
 /** Create the web search tool definition for Pi. */
@@ -198,8 +211,8 @@ export function createWebSearchTool() {
 		label: "Web Search",
 		description: SEARCH_TOOL_DESCRIPTION,
 		parameters: webSearchSchema,
-		async execute(_toolCallId, params) {
-			return executeSearch(_toolCallId, params as SearchToolParams);
+		async execute(_toolCallId, params, signal) {
+			return executeSearch(_toolCallId, params as SearchToolParams, signal);
 		},
 	});
 }

@@ -11,7 +11,10 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const SECRET_COMMAND_TIMEOUT_MS = 15_000;
+// `secret list` may refresh its 1Password index before returning. A cold refresh
+// over the current vault takes about 46 seconds on pocket4, so this must cover
+// the refresh rather than treating it as a hung credential helper.
+const SECRET_COMMAND_TIMEOUT_MS = 120_000;
 
 const ENV_KEY_MAP: Record<string, string | string[]> = {
 	brave: "BRAVE_API_KEY",
@@ -58,6 +61,20 @@ function parseSecretInventory(stdout: string): Set<string> {
 	return available;
 }
 
+function describeSecretError(error: unknown): string {
+	let message = error instanceof Error ? error.message.trim() : String(error);
+	if (!error || typeof error !== "object") return message;
+
+	if ("killed" in error && error.killed === true) {
+		message = `timed out after ${SECRET_COMMAND_TIMEOUT_MS / 1000} seconds (${message})`;
+	}
+	if ("stderr" in error && typeof error.stderr === "string") {
+		const stderr = error.stderr.trim();
+		if (stderr && !message.includes(stderr)) message = `${message}: ${stderr}`;
+	}
+	return message;
+}
+
 async function runSecret(args: string[]): Promise<string> {
 	const result = await execFileAsync("secret", args, {
 		encoding: "utf8",
@@ -76,9 +93,7 @@ async function loadCredentialsFromSecret(): Promise<void> {
 			// `secret` is mysetup-specific; ordinary Pi installs can use env vars only.
 			return;
 		}
-		throw new Error(
-			`Failed to list search credentials through secret: ${error instanceof Error ? error.message : String(error)}`,
-		);
+		throw new Error(`Failed to list search credentials through secret: ${describeSecretError(error)}`);
 	}
 
 	const available = parseSecretInventory(inventory);
@@ -89,9 +104,7 @@ async function loadCredentialsFromSecret(): Promise<void> {
 			try {
 				value = (await runSecret(["get", name])).trim();
 			} catch (error) {
-				throw new Error(
-					`Failed to retrieve ${name} through secret: ${error instanceof Error ? error.message : String(error)}`,
-				);
+				throw new Error(`Failed to retrieve ${name} through secret: ${describeSecretError(error)}`);
 			}
 			if (!value) throw new Error(`secret returned an empty value for ${name}`);
 			return [name, value] as const;

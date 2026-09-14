@@ -64,20 +64,21 @@ Obsidian mobile is a WebView that exposes a Chrome DevTools socket, so you can r
 
 ```bash
 # 1. Find Obsidian's pid and forward its devtools socket to a local port.
+#    Use 9223, NOT 9222 — see the :9222 gotcha below.
 PID=$(adb shell pidof md.obsidian)
 adb shell cat /proc/net/unix | grep "webview_devtools_remote_${PID}"   # confirm the socket exists
-adb forward tcp:9222 localabstract:webview_devtools_remote_${PID}
+adb forward tcp:9223 localabstract:webview_devtools_remote_${PID}
 
 # 2. List targets (the "page" target is the Obsidian window):
-curl -s http://localhost:9222/json | python3 -c "import sys,json;[print(p['type'],p.get('title','')[:40],p.get('webSocketDebuggerUrl','')) for p in json.load(sys.stdin)]"
+curl -s http://localhost:9223/json | python3 -c "import sys,json;[print(p['type'],p.get('title','')[:40],p.get('webSocketDebuggerUrl','')) for p in json.load(sys.stdin)]"
 
 # 3. Eval JS with the helper (Node 24+, uses the global WebSocket):
-node cdp-eval.mjs "app.vault.getName()"
-node cdp-eval.mjs "({hasMs: typeof globalThis.ms, notes: [...ms.vault.cache.activeEntries()].length})"
-node cdp-eval.mjs "(async()=>{ /* any async expr; result is awaited + JSON-returned */ })()"
+CDP_PORT=9223 node ~/.agents/skills/android-control/cdp-eval.mjs "app.vault.getName()"
+CDP_PORT=9223 node ~/.agents/skills/android-control/cdp-eval.mjs "({hasMs: typeof globalThis.ms, notes: [...ms.vault.cache.activeEntries()].length})"
+CDP_PORT=9223 node ~/.agents/skills/android-control/cdp-eval.mjs "(async()=>{ /* any async expr; result is awaited + JSON-returned */ })()"
 ```
 
-`cdp-eval.mjs` (in this skill dir) connects to the page target and runs `Runtime.evaluate` with `awaitPromise + returnByValue`. Re-run `adb forward` after a reconnect (the pid/socket change).
+`cdp-eval.mjs` (in this skill dir) connects to the page target on `localhost:$CDP_PORT` (default `9222`, so always set `CDP_PORT=9223`) and runs `Runtime.evaluate` with `awaitPromise + returnByValue`. Re-run `adb forward` after a reconnect (the pid/socket change).
 
 Note: the `adb forward` must be re-established after every reconnect, and the pid changes if Obsidian is force-stopped/relaunched — re-probe the socket each time.
 
@@ -105,3 +106,4 @@ scrcpy --tcpip=100.67.70.114:<connectport>     # mirror + control the screen
 - **mDNS doesn't work over Tailscale** — always IP:port.
 - `run-as md.obsidian` fails ("package not debuggable") — that's fine; the **WebView** devtools socket is still exposed, which is all CDP needs.
 - Don't leave `adb forward` rules dangling across pid changes; `adb forward --remove-all` to reset.
+- **Never forward to local port `9222`.** That port is "the user's interactive Brave": `brave-mcp` serves CDP there, and myagent's `playwright-main` MCP server (`brave-cdp-mcp` with `BRAVE_CDP_REAL=1`) attaches to whatever listens on `127.0.0.1:9222`. With the phone's WebView forwarded there, `playwright-main` would drive Obsidian on the phone instead of Brave (and if Brave already holds `9222`, the forward cannot bind at all). Use `9223`.

@@ -18,9 +18,7 @@ description: Use the `gog` CLI to interact with Google services — Gmail, Calen
 
 All four accounts use the default OAuth client. Tokens are already authorized and stored on all machines.
 
-**Authorized services (differ by account):**
-- `lukas.kikuchi@gmail.com`, `kikuchi.lukas@gmail.com`: `gmail`, `calendar`, `drive`, `docs`, `sheets`.
-- `lukas@jackfruiting.com`, `jimmy.botjangles@gmail.com`: all 10 user-OAuth services — `gmail`, `calendar`, `drive`, `docs`, `sheets`, `chat`, `contacts`, `tasks`, `people`, `classroom`.
+**Authorized services:** all four accounts hold the same 10 user-OAuth services — `gmail`, `calendar`, `drive`, `docs`, `sheets`, `chat`, `contacts`, `tasks`, `people`, `classroom` (check with `gog auth list`).
 
 The CLI also exposes `slides`, `groups`, and `keep`, but those scopes are **not** authorized on any account — calling them fails until you re-auth with a wider `--services` list (see "Re-authenticating"). `groups` (Cloud Identity) and `keep` are Workspace-only — `keep` additionally needs a service account with domain-wide delegation — so they're only viable on `lukas@jackfruiting.com` if set up.
 
@@ -78,7 +76,7 @@ gog --account lukas.kikuchi@gmail.com sheets update <spreadsheetId> '<range>' va
 gog --account lukas.kikuchi@gmail.com sheets append <spreadsheetId> '<range>' val1 val2 ...
 ```
 
-To create a native Google Doc from a `.md` file, see "Uploading markdown as a native Google Doc" below (`drive upload` does **not** convert).
+To create a native Google Doc from a `.md` file: `gog --account … drive upload foo.md --parent <folderId> --convert-to doc` (see "Uploading markdown as a native Google Doc" below).
 
 ## Default Drive upload target: the Share folder
 
@@ -144,11 +142,20 @@ If Lukas mentions a new persistent folder ("the X folder"), add it here.
 
 ## Uploading markdown as a native Google Doc
 
-`gog drive upload <file.md>` uploads as raw `text/markdown` — it does NOT
-convert to a Google Doc. To get a real Doc from a `.md` file you need
-the Drive API with `mimeType: application/vnd.google-apps.document` set
-on the metadata; Drive then runs its markdown importer. The pattern,
-reusing gog's stored refresh token:
+Plain `gog drive upload <file.md>` uploads raw `text/markdown`. To get a
+real Google Doc, ask gog to convert — Drive then runs its markdown importer:
+
+```bash
+gog --account lukas.kikuchi@gmail.com drive upload ./foo.md --parent <folderId> --convert-to doc
+# --convert picks the native format from the file extension instead.
+# YAML frontmatter is stripped on conversion; --keep-frontmatter keeps it.
+```
+
+Conversion is **create-only** in gog. To **re-import markdown into an
+EXISTING Doc** (keeping its doc ID and sharing), go through the Drive API
+directly — `files().update(media_body=...)` on the Doc's ID. The pattern,
+reusing gog's stored refresh token (the example below shows the create
+call; swap in `svc.files().update(fileId="<docId>", media_body=media)`):
 
 ```python
 import io, json, subprocess, sys
@@ -186,11 +193,9 @@ f = svc.files().create(
 ).execute()
 ```
 
-Important gotchas the Drive markdown importer hits:
+Important gotchas the Drive markdown importer hits (whether via gog or the API):
 - Image embeds `![alt](path.png)` crash the converter (500 error).
   Strip them or rewrite as plain links before uploading.
-- Use `files().update(media_body=...)` to re-import a new markdown body
-  into an existing Doc — preserves the doc ID and any sharing.
 - The 500 errors are sometimes transient; retry with exponential backoff.
 
 ## Environment
@@ -202,13 +207,15 @@ Important gotchas the Drive markdown importer hits:
 If a `gog` command fails with an authentication error (token expired, missing scopes, etc.), tell the user to re-authorize with:
 
 ```bash
-gog auth add <email> --services gmail,calendar,drive,docs,sheets --force-consent
+gog auth add <email> --services all --force-consent
 ```
+
+Always pass `--services all` (the same default `gog-auth-bootstrap-all` uses) — every account holds the full set, and re-authorizing with a narrower list would cut its token down to just those scopes.
 
 | Account | Command |
 |---|---|
-| Personal | `gog auth add lukas.kikuchi@gmail.com --services gmail,calendar,drive,docs,sheets --force-consent` |
-| Autonomy work | `gog auth add kikuchi.lukas@gmail.com --services gmail,calendar,drive,docs,sheets --force-consent` |
+| Personal | `gog auth add lukas.kikuchi@gmail.com --services all --force-consent` |
+| Autonomy work | `gog auth add kikuchi.lukas@gmail.com --services all --force-consent` |
 | Jackfruit work | `gog auth add lukas@jackfruiting.com --services all --force-consent` |
 | Agent account | `gog auth add jimmy.botjangles@gmail.com --services all --force-consent` |
 

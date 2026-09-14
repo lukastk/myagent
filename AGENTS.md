@@ -57,6 +57,7 @@ myagent/
 ├── external_skills.txt         # External skills to install via `npx skills add`
 ├── pi_settings.json        # Declarative Pi settings, shallow-merged onto ~/.pi/agent/settings.json
 ├── mcp.json                # MCP server definitions applied to Pi, Claude, and Codex
+├── models.json             # Custom Pi providers/models (Venice), symlinked to ~/.pi/agent/models.json
 ├── scripts/
 │   ├── install-pi.sh                  # Pi-side install (extensions, skills, mcp.json symlinks)
 │   ├── install-claude.sh              # Claude Code install (skill symlinks + `claude mcp add-json`)
@@ -89,6 +90,7 @@ myagent/
 4. Runs `npm install --omit=dev` for any skill that has a `package.json`.
 5. Shallow-merges `pi_settings.json` onto `~/.pi/agent/settings.json` (our keys win, runtime keys preserved — see "Pi settings" below).
 6. Symlinks `mcp.json` to `~/.config/mcp/mcp.json` and `~/.pi/agent/mcp.json`.
+   Then symlinks `models.json` to `~/.pi/agent/models.json` (a regular file already there is backed up to `models.json.stale-<epoch>.bak` and adopted). Symlink, not merge: Pi never writes `models.json` and re-reads it every time `/model` opens — see "Custom models" below.
 7. Runs `scripts/configure-pi-tool-binaries.sh` to configure Pi tool binaries.
 8. Installs Playwright MCP (patched): persistently installs `@playwright/mcp` into `~/.local/playwright-mcp` and applies three patches — a `Browser.setDownloadBehavior` skip (all platforms, for the CDP-connect/opt-out path), a Chromium-switches patch (**macOS only** — drop `--use-mock-keychain`/`--password-store=basic` so a Brave that Playwright *launches* can decrypt the seeded profile's cookies; Linux deliberately keeps `--password-store=basic` for its portable cookie key), and the `browser_close` tool description (all platforms; upstream ships "Close the page", which misled agents into thinking it only closes a tab and leaving the per-agent Brave resident all session; it actually disposes the whole browser process, so the patched text tells agents to close it when done). The installer locates each patch target by string search, since current playwright-core (≥1.61) bundles these into `lib/coreBundle.js` (formerly the separate `crBrowser.js` / `chromiumSwitches.js`). It symlinks `brave-cdp-mcp`, `mcp-lazy`, `mcp-lazy-shim`, `remote-playwright-mcp`, and `remote-playwright-host` next to that install, and warms the lazy-shim cache (`mcp-lazy-cache.json`) once so a non-browsing session skips the ~128 MB Node `cli.js` (see "Lazy MCP proxy shim" below). (The Playwright servers in `mcp.json` run those launchers — see below.)
 9. Reads `external_extensions.txt` (+ `external_extensions_mac.txt` on macOS) and runs `pi install <source>`.
@@ -134,7 +136,7 @@ The extensions that ship in this repo (each under `extensions/<name>/`; see the 
   via `sesh thread report-state`, giving sesh exact busy/idle (`state_authority = reported`)
   instead of the pane content-diff heuristic. Inert outside a sesh thread (no `SESH_THREAD_ID`
   → it registers nothing). The claude twin is the hook set in myrig's `home/.claude/settings.json`.
-- **session-model** — session-only model switching: `/smodel`, `/smodel-scope`, and cycle shortcuts.
+- **session-model** — session-only model switching: `/smodel` plus `Ctrl+Shift+L` (selector) / `Ctrl+Shift+P`/`K` (cycle next/previous). It reads pi's native `enabledModels` scope rather than keeping its own list — edit that scope with pi's built-in `/scoped-models`.
 - **web** — three tools — web search, URL fetch (with site-specific scrapers), and browser automation; transplanted from oh-my-pi (`README.md`).
 
 ## How to write a new extension
@@ -263,7 +265,7 @@ Once it works, run `./install.sh` to symlink it into place. Extensions in auto-d
 
 - `pi.registerTool(def)` — register a tool the model can call
 - `pi.registerCommand(name, def)` — register a `/name` slash command
-- `pi.registerShortcut(key, def)` — register a keyboard shortcut
+- `pi.registerShortcut(key, def)` — register a keyboard shortcut. Bind extension shortcuts on **`Ctrl+Shift+<letter>`, never `Ctrl+Alt`**: inside mycockpit, tmux has no Super modifier and folds Super/Cmd into Meta, so desktop `Ctrl+Super`/`Ctrl+Cmd` chords reach Pi as `Ctrl+Alt` and collide (a44f7e1; rationale in the `extensions/session-model/index.ts` header). Stick to letters, and avoid foot's reserved `Ctrl+Shift+{c,v,r,n,o,u,x,z}`.
 - `pi.on(event, handler)` — subscribe to lifecycle events
 - `pi.registerProvider(name, config)` — register a custom LLM provider
 - `pi.sendMessage(msg)` — inject a message into the session
@@ -315,6 +317,7 @@ description: What this skill does and when to use it.
 
 - `name` must be lowercase letters/numbers/hyphens and match the folder name.
 - `description` should be specific so the agent knows when to load the skill.
+- Add `disable-model-invocation: true` for manual or creative workflows the model rarely needs to auto-discover (7 local skills carry it, e.g. `deslop`, `html-slides`, `multipart-vault-doc`). It keeps the skill's name and description out of every turn's prompt in both Pi and Claude Code, while `/skill:name` (Pi) and `/name` (Claude Code) still invoke it. Leave it off skills that agents are told to use on their own (`gog`, `myvault`, `sesh-cli`, …).
 
 ### 3. Add instructions/scripts
 
@@ -351,10 +354,20 @@ vercel-labs/agent-skills@vercel-react-best-practices
 
 Then run `./install.sh`.
 
+This is also how the **skills that live in other mysetup repos** (`sesh-cli`,
+`do-tickets`, `myvault`, `convo-review`, `boxyard-cli`, `mysetup-navigator`, …)
+reach every harness: `external_skills.txt` lists them as `lukastk/<repo>@<skill>`.
+`npx skills add` installs them from **GitHub as copies** (real directories under
+`~/.agents/skills/`), not as symlinks to the local checkouts like the skills in
+this repo. So an edit to e.g. `~/mysetup/sesh/skills/sesh-cli/SKILL.md` is not
+live until it is pushed and `./install.sh` is re-run. To distribute a new one,
+append `lukastk/<repo>@<skill>`.
+
 ## Pi settings
 
 `pi_settings.json` holds our declarative Pi settings (default provider/model,
-thinking level, enabled models, the session model-scope list). `install-pi.sh`
+thinking level, project trust, TUI mode, and `enabledModels`, which is also the
+scope session-model cycles through). `install-pi.sh`
 **shallow-merges** it onto the live `~/.pi/agent/settings.json` with
 `jq -s '.[0] * .[1]'` (existing `*` ours): our declared keys overwrite, but any
 key we don't declare is left untouched.
@@ -406,6 +419,17 @@ installer resolves the real zsh via `command -v zsh` and sets it, but only when
 zsh exists and the live settings don't already pin a `shellPath` (so a
 deliberate user choice is never overridden, and a zsh-less box is left to Pi's
 own `/bin/bash` fallback rather than getting a broken path).
+
+### Custom models (`models.json`)
+
+`models.json` declares custom providers/models that Pi's built-in catalogs don't
+carry — currently the **Venice** provider (key from `$VENICE_API_KEY`), whose
+models `pi_settings.json` lists in `enabledModels` as `venice/*`. It is the
+supported escape hatch (pi's `docs/models.md`) for anything Pi's catalogs lack:
+Pi's OpenRouter catalog is a curated list served from pi.dev, not OpenRouter's
+live model list. Unlike `settings.json` it is **symlinked**, not merged, to
+`~/.pi/agent/models.json`: Pi treats it as a read-only snapshot and re-reads it
+whenever `/model` opens, so repo edits take effect without restarting Pi.
 
 ## MCP servers
 

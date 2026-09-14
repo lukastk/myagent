@@ -7,6 +7,8 @@ description: Send a command to the user's terminal (an adjacent tmux window in t
 
 Some commands belong in the user's terminal, not in the agent's Bash tool. When the agent is running inside a tmux session and the user keeps their own shell open in an *adjacent window of the same session*, this skill is how you put a command into that shell.
 
+**Under sesh this layout is usually absent.** Each sesh thread (you, if `$SESH_THREAD_ID` is set) runs in its own single-window session on the `sesh` work server, so there is normally no adjacent user window. The user's terminal is then a separate **sesh shell thread** — target it with `sesh thread send --id <shell-thread> --text "<command>"` (add `--window <n>` or `--pane <%id>` to pick a pane in that shell's session; see the `sesh-cli` skill, "Shell threads"), or ask the user where to send it. The confirmation and safety rules below apply unchanged.
+
 ## When to use this skill
 
 - A long-running blocking process the user should monitor and stop with Ctrl-C — dev servers, build watchers, tunnels, TUIs, REPLs.
@@ -25,11 +27,11 @@ Some commands belong in the user's terminal, not in the agent's Bash tool. When 
 The agent is inside one tmux window. Discover the others:
 
 ```zsh
-tmux display-message -p '#{session_name}'
-tmux list-windows -F '#{window_index}: #{window_name} active=#{window_active} panes=#{window_panes}'
+tmux display-message -p -t "$TMUX_PANE" '#{session_name} #{window_index}'   # the agent's OWN session + window
+tmux list-windows -t "$TMUX_PANE" -F '#{window_index}: #{window_name} active=#{window_active} panes=#{window_panes}'
 ```
 
-Conventionally the agent's own window is the one with `active=1` (Claude Code itself is running there). The other window(s) are the user's terminals. If there are several non-active windows, ask the user which one to target — names like `zsh`, `bash`, `term`, or the project name are usually the user's; `claude` or `agent` is usually not.
+Identify the agent's own window from `$TMUX_PANE` (the pane the agent runs in), **not** from `active=1` — `window_active` marks the window currently being *viewed*, which is the user's window whenever they are looking at their shell. The other window(s) are the user's terminals. If the session has only the agent's window, this is the sesh case above. If there are several other windows, ask the user which one to target — names like `zsh`, `bash`, `term`, or the project name are usually the user's; `claude` or `agent` is usually not.
 
 If you're unsure whether you're even inside tmux, check `$TMUX` — if empty, this skill does not apply.
 
@@ -103,7 +105,9 @@ The motivating case for this skill. The agent has produced an HTML file and want
 
 ```zsh
 # 1. Discover.
-tmux list-windows -F '#{window_index}: #{window_name} active=#{window_active}'
+tmux display-message -p -t "$TMUX_PANE" '#{window_index}'
+# 0                     → the agent is window 0
+tmux list-windows -t "$TMUX_PANE" -F '#{window_index}: #{window_name} active=#{window_active}'
 # 0: claude active=1
 # 1: zsh active=0
 # → user's terminal is window 1.

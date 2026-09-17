@@ -10,7 +10,7 @@ import { onionFetch } from "../lib/tor.ts";
 
 const ONION = "2gzyxa5ihm7nsggfxnu52rck2vv4rvmdlkiu3zzui5du4xyclen53wid.onion";
 
-type Responder = (socket: Socket, request: string) => void;
+type Responder = (socket: Socket, request: string, destination: string) => void;
 
 async function fakeSocks(responder: Responder): Promise<{ port: number; close: () => Promise<void> }> {
   const sockets = new Set<Socket>();
@@ -19,6 +19,7 @@ async function fakeSocks(responder: Responder): Promise<{ port: number; close: (
     socket.on("close", () => sockets.delete(socket));
     let state: "greeting" | "auth" | "connect" | "http" = "greeting";
     let buffered = Buffer.alloc(0);
+    let destination = "";
     socket.on("data", (chunk) => {
       buffered = Buffer.concat([buffered, chunk]);
       while (true) {
@@ -40,7 +41,10 @@ async function fakeSocks(responder: Responder): Promise<{ port: number; close: (
         } else if (state === "connect") {
           if (buffered.length < 5) return;
           const addressType = buffered[3];
-          const addressLength = addressType === 0x03 ? 1 + buffered[4] : addressType === 0x01 ? 4 : 16;
+          assert.equal(addressType, 0x03, "the client must pass the onion hostname to SOCKS for remote resolution");
+          const domainLength = buffered[4];
+          destination = buffered.subarray(5, 5 + domainLength).toString("ascii");
+          const addressLength = 1 + domainLength;
           const length = 4 + addressLength + 2;
           if (buffered.length < length) return;
           buffered = buffered.subarray(length);
@@ -51,7 +55,7 @@ async function fakeSocks(responder: Responder): Promise<{ port: number; close: (
           if (end < 0) return;
           const request = buffered.subarray(0, end + 4).toString("ascii");
           buffered = buffered.subarray(end + 4);
-          responder(socket, request);
+          responder(socket, request, destination);
           return;
         }
       }
@@ -102,7 +106,10 @@ async function withEnvironment(responder: Responder, run: (auditPath: string) =>
 test("fetches sanitized HTML and retains only same-onion links", { concurrency: false }, async () => {
   const body = Buffer.from(`<!doctype html><title> Safe title </title><body>Hello <script>ignore()</script><form>secret</form><a href="/next#part">Next</a><a href="https://example.com/">Clear</a></body>`);
   await withEnvironment(
-    (socket) => socket.end(httpResponse("200 OK", { "Content-Type": "text/html; charset=utf-8", "Content-Length": String(body.length) }, body)),
+    (socket, _request, destination) => {
+      assert.equal(destination, ONION);
+      socket.end(httpResponse("200 OK", { "Content-Type": "text/html; charset=utf-8", "Content-Length": String(body.length) }, body));
+    },
     async (auditPath) => {
       const result = await onionFetch({ url: `http://${ONION}/`, timeout_ms: 5_000, max_bytes: 65_536 });
       assert.equal(result.title, "Safe title");

@@ -20,6 +20,8 @@
     "privatemode/gpt-oss-120b",
     "privatemode/kimi-k2.6",
     "venice/qwen-3-6-plus",
-    "venice/olafangensan-glm-4.7-flash-heretic"
+    "venice/olafangensan-glm-4.7-flash-heretic",
+    "abliteration/abliterated-model-large-v2",
+    "abliteration/abliterated-model"
   ]
 }

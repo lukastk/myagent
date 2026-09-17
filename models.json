@@ -77,6 +77,93 @@
           }
         }
       ]
+    },
+    "abliteration": {
+      "baseUrl": "https://api.abliteration.ai/v1",
+      "api": "openai-completions",
+      "apiKey": "$ABLITERATION_AI_API_KEY",
+      "compat": {
+        "sendSessionAffinityHeaders": true,
+        "supportsReasoningEffort": true
+      },
+      "models": [
+        {
+          "id": "abliterated-model-large-v2",
+          "name": "Abliterated Model Large V2",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": null,
+            "minimal": null,
+            "low": "low",
+            "medium": null,
+            "high": "high",
+            "xhigh": null,
+            "max": "max"
+          },
+          "input": [
+            "text"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 999990,
+          "cost": {
+            "input": 3,
+            "output": 5,
+            "cacheRead": 0.3,
+            "cacheWrite": 3
+          }
+        },
+        {
+          "id": "abliterated-model",
+          "name": "Abliterated Model",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": "none",
+            "minimal": "minimal",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh",
+            "max": "max"
+          },
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 262134,
+          "cost": {
+            "input": 1,
+            "output": 3,
+            "cacheRead": 0.1,
+            "cacheWrite": 1
+          }
+        },
+        {
+          "id": "abliterated-model-large",
+          "name": "Abliterated Model Large",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": "none",
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high",
+            "xhigh": null,
+            "max": "max"
+          },
+          "input": [
+            "text"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 999990,
+          "cost": {
+            "input": 3,
+            "output": 5,
+            "cacheRead": 0.3,
+            "cacheWrite": 3
+          }
+        }
+      ]
     }
   }
 }

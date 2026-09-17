@@ -57,7 +57,7 @@ myagent/
 ├── external_skills.txt         # External skills to install via `npx skills add`
 ├── pi_settings.json        # Declarative Pi settings, shallow-merged onto ~/.pi/agent/settings.json
 ├── mcp.json                # MCP server definitions applied to Pi, Claude, and Codex
-├── models.json             # Custom Pi providers/models (Venice), symlinked to ~/.pi/agent/models.json
+├── models.json             # Custom Pi providers/models (Venice, abliteration.ai), symlinked to ~/.pi/agent/models.json
 ├── scripts/
 │   ├── install-pi.sh                  # Pi-side install (extensions, skills, mcp.json symlinks)
 │   ├── install-claude.sh              # Claude Code install (skill symlinks + `claude mcp add-json`)
@@ -423,8 +423,12 @@ own `/bin/bash` fallback rather than getting a broken path).
 ### Custom models (`models.json`)
 
 `models.json` declares custom providers/models that Pi's built-in catalogs don't
-carry — currently the **Venice** provider (key from `$VENICE_API_KEY`), whose
-models `pi_settings.json` lists in `enabledModels` as `venice/*`. It is the
+carry — currently **Venice** (key from `$VENICE_API_KEY`) and **abliteration.ai**
+(`$ABLITERATION_AI_API_KEY`). Their preferred models are listed in
+`pi_settings.json`'s `enabledModels`; the previous abliteration.ai large model is
+available in the full `/model` catalog but intentionally outside that preferred
+scope. The abliteration.ai provider enables Pi's per-session affinity headers so
+the service can route a conversation for prompt-cache reuse. This file is the
 supported escape hatch (pi's `docs/models.md`) for anything Pi's catalogs lack:
 Pi's OpenRouter catalog is a curated list served from pi.dev, not OpenRouter's
 live model list. Unlike `settings.json` it is **symlinked**, not merged, to

@@ -361,7 +361,8 @@ export async function onionFetch(params: { url: string; timeout_ms?: number; max
 async function installedTorVersion(): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync("tor", ["--version"], { timeout: 3_000 });
-    return /^Tor version ([^ .]+(?:\.[^ .]+)*)/m.exec(stdout)?.[1] ?? null;
+    const firstLine = stdout.split(/\r?\n/, 1)[0];
+    return /^Tor version (.+)\.$/.exec(firstLine)?.[1] ?? null;
   } catch {
     return null;
   }

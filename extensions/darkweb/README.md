@@ -2,7 +2,7 @@
 
 A first-party Pi extension for defensive, read-only dark-web research. It keeps clearnet discovery, structured threat-intelligence feeds, and direct Tor retrieval separate.
 
-The extension registers exactly six tools, but **all six begin every session inactive**. Only the user can activate them with the `/darkweb` command; there is no model-callable loader and no injected system-prompt guidance.
+The extension registers exactly seven tools, but **all seven begin every session inactive**. Only the user can activate them with the `/darkweb` command; there is no model-callable loader and no injected system-prompt guidance.
 
 ## Activation
 
@@ -26,8 +26,9 @@ Activation is session-local. Existing built-in tools and tools from other extens
 | `ransomware_search` | Clearnet only | Normalizes ransomware.live and RansomLook actor-claim feeds. It never visits claim/leak URLs and labels claims as unverified. |
 | `onion_fetch` | Tor only | Performs one constrained GET through a fixed loopback SOCKS endpoint, returning sanitized static text. |
 | `tor_status` | Tor only | Proves the proxy can reach an official Tor Project onion; a listening port alone is not reported as healthy. |
+| `breach_search` | Clearnet only | Checks whether a password appears in known breach corpora via HIBP k-anonymity (only a 5-character SHA-1 prefix is transmitted; no API key) and looks up which breaches an email address appears in (requires `HIBP_API_KEY`). |
 
-A later, separately implemented `breach_search` can be added to the declarative registry in `index.ts` without changing activation logic.
+`breach_search` was added to the declarative registry in `index.ts` by a second agent without changing the activation logic; further tools follow the same pattern.
 
 ## Direct-fetch policy
 
@@ -59,11 +60,13 @@ Resolution order:
 
 The audit path defaults to `~/.local/state/myagent/darkweb/audit.jsonl`; `MYAGENT_DARKWEB_AUDIT_LOG` may override it with an absolute path. The proxy override must remain a `socks5h` URL with an explicit loopback port. Audit directories/files are created with modes `0700`/`0600`, and an existing audit file is forced to `0600` before each append.
 
+`breach_search` password checks use the free unauthenticated Pwned Passwords range API and need no configuration. Account (email) search additionally requires the `HIBP_API_KEY` environment variable (a paid Have I Been Pwned subscription; fetch on demand from 1Password, e.g. `secret env HIBP_API_KEY`). Without it, account searches fail loudly with `API_KEY_MISSING`.
+
 Tor itself is installed and supervised by myrig's `tor` target. The managed configuration binds only the port in `config.toml`'s `[services.tor]` block (currently 19050) and enables `IsolateSOCKSAuth`.
 
 ## Stable errors
 
-`TOR_UNAVAILABLE`, `INVALID_ONION_V3`, `REDIRECT_BLOCKED`, `CONTENT_TYPE_BLOCKED`, `RESPONSE_TOO_LARGE`, `FETCH_TIMEOUT`, `UPSTREAM_SCHEMA_CHANGED`, `SOURCE_UNAVAILABLE`, and `AUDIT_WRITE_FAILED`.
+`TOR_UNAVAILABLE`, `INVALID_ONION_V3`, `REDIRECT_BLOCKED`, `CONTENT_TYPE_BLOCKED`, `RESPONSE_TOO_LARGE`, `FETCH_TIMEOUT`, `UPSTREAM_SCHEMA_CHANGED`, `SOURCE_UNAVAILABLE`, `API_KEY_MISSING`, and `AUDIT_WRITE_FAILED`.
 
 The tools never retry over clearnet, silently substitute a mirror, relax a limit, or convert upstream schema drift into an empty result.
 

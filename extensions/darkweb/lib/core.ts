@@ -13,6 +13,7 @@ export type ErrorCode =
   | "FETCH_TIMEOUT"
   | "UPSTREAM_SCHEMA_CHANGED"
   | "SOURCE_UNAVAILABLE"
+  | "API_KEY_MISSING"
   | "AUDIT_WRITE_FAILED";
 
 export class DarkwebError extends Error {
@@ -202,7 +203,7 @@ export async function readBoundedResponse(response: Response, maxBytes = SOURCE_
 
 export async function fetchSource(
   url: URL | string,
-  options: { responseType: "json" | "text"; allowNotFound?: boolean; maxBytes?: number },
+  options: { responseType: "json" | "text"; allowNotFound?: boolean; maxBytes?: number; headers?: Record<string, string> },
 ): Promise<{ data: unknown; status: number; fetchedAt: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SOURCE_TIMEOUT_MS);
@@ -211,7 +212,7 @@ export async function fetchSource(
     response = await fetch(url, {
       signal: controller.signal,
       redirect: "error",
-      headers: { Accept: options.responseType === "json" ? "application/json" : "text/plain" },
+      headers: { Accept: options.responseType === "json" ? "application/json" : "text/plain", ...(options.headers ?? {}) },
     });
   } catch (error) {
     clearTimeout(timer);
@@ -229,6 +230,9 @@ export async function fetchSource(
   }
 
   const body = await readBoundedResponse(response, options.maxBytes);
+  if (options.allowNotFound && response.status === 404 && body.byteLength === 0) {
+    return { data: null, status: response.status, fetchedAt: new Date().toISOString() };
+  }
   if (options.responseType === "text") {
     return { data: body.toString("utf8"), status: response.status, fetchedAt: new Date().toISOString() };
   }

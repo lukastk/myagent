@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import darkwebExtension, { TOOL_REGISTRY } from "../index.ts";
 
-test("registers exactly six dark-web tools without prompt injection and starts them inactive", async () => {
+test("registers exactly seven dark-web tools without prompt injection and starts them inactive", async () => {
   const tools: Array<Record<string, unknown>> = [];
   const events = new Map<string, (...args: unknown[]) => unknown>();
   const commands = new Map<string, Record<string, unknown>>();
@@ -34,6 +34,7 @@ test("registers exactly six dark-web tools without prompt injection and starts t
     "ransomware_search",
     "onion_fetch",
     "tor_status",
+    "breach_search",
   ]);
   for (const tool of tools) {
     assert.equal("promptSnippet" in tool, false);

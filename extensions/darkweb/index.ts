@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { asToolResult } from "./lib/core.ts";
+import { breachSearch } from "./lib/breach.ts";
 import { onionLookup, onionSearch, ransomwareSearch, secureDropSearch } from "./lib/sources.ts";
 import { onionFetch, torStatus } from "./lib/tor.ts";
 
@@ -46,6 +47,19 @@ const ONION_FETCH_PARAMS = Type.Object({
 
 const TOR_STATUS_PARAMS = Type.Object({});
 
+const BREACH_SEARCH_PARAMS = Type.Object({
+  password: Type.Optional(Type.String({
+    minLength: 1,
+    maxLength: 256,
+    description: "Check this password against known breach corpora via k-anonymity; only a 5-character SHA-1 prefix leaves this machine",
+  })),
+  email: Type.Optional(Type.String({
+    maxLength: 254,
+    description: "Email address to look up in known breaches; requires the HIBP_API_KEY environment variable",
+  })),
+  padding: Type.Optional(Type.Boolean({ description: "Request HIBP range padding so returned suffixes include decoys" })),
+});
+
 interface ToolRegistryEntry {
   name: string;
   label: string;
@@ -54,9 +68,9 @@ interface ToolRegistryEntry {
   execute: (params: never) => Promise<unknown>;
 }
 
-// Registration, activation, and completion all derive from this one registry. A
-// future separately implemented breach_search adapter can be added here without
-// changing the activation mechanism.
+// Registration, activation, and completion all derive from this one registry.
+// breach_search was added here (by the second agent) without changing the
+// activation mechanism — the pattern generalizes to further tools.
 export const TOOL_REGISTRY: readonly ToolRegistryEntry[] = [
   {
     name: "onion_search",
@@ -99,6 +113,14 @@ export const TOOL_REGISTRY: readonly ToolRegistryEntry[] = [
     description: "Verify the configured loopback SOCKS listener by fetching a benign official Tor Project onion. A listening TCP port alone is not considered healthy.",
     parameters: TOR_STATUS_PARAMS,
     execute: torStatus as ToolRegistryEntry["execute"],
+  },
+  {
+    name: "breach_search",
+    label: "Breach Search",
+    description:
+      "Check whether a password appears in known breach corpora (k-anonymity; only a 5-character SHA-1 prefix is transmitted) and which breaches an email address appears in (requires HIBP_API_KEY). Password checks need no API key.",
+    parameters: BREACH_SEARCH_PARAMS,
+    execute: breachSearch as ToolRegistryEntry["execute"],
   },
 ] as const;
 

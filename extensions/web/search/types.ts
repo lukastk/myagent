@@ -8,6 +8,8 @@
 export type SearchProviderId =
 	| "exa"
 	| "brave"
+	| "tinyfish"
+	| "you"
 	| "jina"
 	| "kimi"
 	| "zai"
@@ -24,6 +26,8 @@ export function isSearchProviderId(value: string): value is SearchProviderId {
 	return [
 		"exa",
 		"brave",
+		"tinyfish",
+		"you",
 		"jina",
 		"kimi",
 		"zai",

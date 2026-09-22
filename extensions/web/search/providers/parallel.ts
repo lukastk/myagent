@@ -2,7 +2,7 @@
  * Parallel Web Search Provider
  *
  * Inlined Parallel API implementation (no shared module dependency).
- * Uses the Parallel Search API v1beta.
+ * Uses the current Parallel Search API v1.
  */
 import { getEnvApiKey } from "../../lib/env-keys.js";
 import type { SearchResponse } from "../types.js";
@@ -12,8 +12,7 @@ import type { SearchParams } from "./base.js";
 import { SearchProvider } from "./base.js";
 import { findCredential, toSearchSources } from "./utils.js";
 
-const PARALLEL_SEARCH_URL = "https://api.parallel.ai/v1beta/search";
-const PARALLEL_BETA_HEADER = "search-extract-2025-10-10";
+const PARALLEL_SEARCH_URL = "https://api.parallel.ai/v1/search";
 const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 40;
 
@@ -88,7 +87,6 @@ export async function searchParallel(params: {
 			Accept: "application/json",
 			"Content-Type": "application/json",
 			"x-api-key": apiKey,
-			"parallel-beta": PARALLEL_BETA_HEADER,
 		},
 		body: JSON.stringify({
 			objective: params.query,

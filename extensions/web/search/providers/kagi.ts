@@ -1,8 +1,7 @@
 /**
  * Kagi Web Search Provider
  *
- * Inlined Kagi API implementation (no shared module dependency).
- * Uses the Kagi Search API v0.
+ * Uses Kagi's current Search API v1 and returns its premium structured results.
  */
 import { getEnvApiKey } from "../../lib/env-keys.js";
 import type { SearchResponse } from "../types.js";
@@ -12,62 +11,50 @@ import type { SearchParams } from "./base.js";
 import { SearchProvider } from "./base.js";
 import { findCredential, toSearchSources } from "./utils.js";
 
-const KAGI_SEARCH_URL = "https://kagi.com/api/v0/search";
+const KAGI_SEARCH_URL = "https://kagi.com/api/v1/search";
 const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 40;
 
-interface KagiSearchResultObject {
-	t: 0;
+interface KagiSearchResult {
 	url: string;
 	title: string;
 	snippet?: string;
-	published?: string;
+	time?: string;
+	props?: { question?: string };
 }
-
-interface KagiRelatedSearchesObject {
-	t: 1;
-	list: string[];
-}
-
-type KagiSearchObject = KagiSearchResultObject | KagiRelatedSearchesObject;
 
 interface KagiErrorEntry {
-	code?: number;
-	msg?: string;
+	code?: string;
+	message?: string | null;
 }
 
 interface KagiSearchResponse {
-	meta: {
-		id: string;
+	meta?: { trace?: string };
+	data?: {
+		search?: KagiSearchResult[];
+		related_search?: KagiSearchResult[];
 	};
-	data: KagiSearchObject[];
 	error?: KagiErrorEntry[];
 }
 
 function extractKagiErrorMessage(payload: unknown): string | null {
 	if (!payload || typeof payload !== "object") return null;
 	const record = payload as Record<string, unknown>;
-
 	for (const value of [record.message, record.detail]) {
-		if (typeof value === "string" && value.trim().length > 0) {
-			return value.trim();
-		}
+		if (typeof value === "string" && value.trim()) return value.trim();
 	}
-
-	if (typeof record.error === "string" && record.error.trim().length > 0) {
-		return record.error.trim();
-	}
-
 	if (Array.isArray(record.error)) {
-		for (const entry of record.error) {
-			if (!entry || typeof entry !== "object") continue;
-			const message = (entry as Record<string, unknown>).msg;
-			if (typeof message === "string" && message.trim().length > 0) {
-				return message.trim();
-			}
-		}
+		const messages = record.error
+			.map(entry => {
+				if (!entry || typeof entry !== "object") return undefined;
+				const error = entry as Record<string, unknown>;
+				const message = typeof error.message === "string" ? error.message.trim() : "";
+				const code = typeof error.code === "string" ? error.code.trim() : "";
+				return message || code || undefined;
+			})
+			.filter((message): message is string => Boolean(message));
+		if (messages.length > 0) return messages.join("; ");
 	}
-
 	return null;
 }
 
@@ -80,82 +67,74 @@ export async function findApiKey(): Promise<string | null> {
 export async function searchKagi(params: {
 	query: string;
 	num_results?: number;
+	recency?: "day" | "week" | "month" | "year";
 	signal?: AbortSignal;
 }): Promise<SearchResponse> {
 	const numResults = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
-
 	const apiKey = await findApiKey();
 	if (!apiKey) {
 		throw new SearchProviderError("kagi", "Kagi credentials not found. Set KAGI_API_KEY in environment.");
 	}
 
-	const requestUrl = new URL(KAGI_SEARCH_URL);
-	requestUrl.searchParams.set("q", params.query);
-	requestUrl.searchParams.set("limit", String(numResults));
+	const body: Record<string, unknown> = {
+		query: params.query,
+		workflow: "search",
+		format: "json",
+		limit: numResults,
+	};
+	if (params.recency && params.recency !== "year") {
+		body.lens = { time_relative: params.recency };
+	} else if (params.recency === "year") {
+		const after = new Date();
+		after.setUTCFullYear(after.getUTCFullYear() - 1);
+		body.filters = { after: after.toISOString().slice(0, 10) };
+	}
 
-	const response = await fetch(requestUrl, {
+	const response = await fetch(KAGI_SEARCH_URL, {
+		method: "POST",
 		headers: {
-			Authorization: `Bot ${apiKey}`,
+			Authorization: `Bearer ${apiKey}`,
 			Accept: "application/json",
+			"Content-Type": "application/json",
 		},
+		body: JSON.stringify(body),
 		signal: params.signal,
 	});
 
-	if (!response.ok) {
-		const errorText = await response.text();
-		let message = errorText.trim();
-		if (message.length > 0) {
-			try {
-				message = extractKagiErrorMessage(JSON.parse(errorText)) ?? message;
-			} catch {
-				// keep raw text
-			}
-		}
-		throw new SearchProviderError(
-			"kagi",
-			message ? `Kagi API error (${response.status}): ${message}` : `Kagi API error (${response.status})`,
-			response.status,
-		);
-	}
-
-	const payload = (await response.json()) as KagiSearchResponse;
-	if (payload.error && payload.error.length > 0) {
-		const firstError = payload.error[0];
-		throw new SearchProviderError(
-			"kagi",
-			`Kagi API error (${firstError.code ?? response.status}): ${extractKagiErrorMessage(payload) ?? "Unknown error"}`,
-			firstError.code ?? response.status,
-		);
-	}
-
-	interface KagiSource {
-		title: string;
-		url: string;
-		snippet?: string;
-		publishedDate?: string;
-	}
-
-	const sources: KagiSource[] = [];
-	const relatedQuestions: string[] = [];
-
-	for (const item of payload.data) {
-		if (item.t === 0) {
-			sources.push({
-				title: item.title,
-				url: item.url,
-				snippet: item.snippet,
-				publishedDate: item.published ?? undefined,
-			});
-		} else if (item.t === 1) {
-			relatedQuestions.push(...item.list);
+	const rawText = await response.text();
+	let payload: KagiSearchResponse | undefined;
+	if (rawText) {
+		try {
+			payload = JSON.parse(rawText) as KagiSearchResponse;
+		} catch {
+			// Keep the raw response as the error message below.
 		}
 	}
+	if (!response.ok || payload?.error?.length) {
+		const message = extractKagiErrorMessage(payload) ?? (rawText.trim() || "Unknown error");
+		throw new SearchProviderError("kagi", `Kagi API error (${response.status}): ${message}`, response.status);
+	}
+	if (!payload) {
+		throw new SearchProviderError("kagi", "Kagi search returned an empty response.", response.status);
+	}
+
+	const sources = (payload.data?.search ?? [])
+		.filter(result => Boolean(result.url))
+		.map(result => ({
+			title: result.title || result.url,
+			url: result.url,
+			snippet: result.snippet,
+			publishedDate: result.time,
+		}));
+	const relatedQuestions = (payload.data?.related_search ?? [])
+		.map(result => result.props?.question?.trim())
+		.filter((question): question is string => Boolean(question));
 
 	return {
 		provider: "kagi",
 		sources: toSearchSources(sources, numResults),
 		relatedQuestions: relatedQuestions.length > 0 ? relatedQuestions : undefined,
-		requestId: payload.meta.id,
+		requestId: payload.meta?.trace,
 	};
 }
 
@@ -176,6 +155,7 @@ export class KagiProvider extends SearchProvider {
 		return searchKagi({
 			query: params.query,
 			num_results: params.numSearchResults ?? params.limit,
+			recency: params.recency,
 			signal: params.signal,
 		});
 	}

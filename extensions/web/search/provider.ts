@@ -11,7 +11,9 @@ import { ParallelProvider } from "./providers/parallel.js";
 import { PerplexityProvider } from "./providers/perplexity.js";
 import { SyntheticProvider } from "./providers/synthetic.js";
 import { TavilyProvider } from "./providers/tavily.js";
+import { TinyFishProvider } from "./providers/tinyfish.js";
 import { ZaiProvider } from "./providers/zai.js";
+import { YouProvider } from "./providers/you.js";
 import type { SearchProviderId } from "./types.js";
 
 export type { SearchParams } from "./providers/base.js";
@@ -20,6 +22,8 @@ export { SearchProvider } from "./providers/base.js";
 const SEARCH_PROVIDERS: Record<SearchProviderId, SearchProvider> = {
 	exa: new ExaProvider(),
 	brave: new BraveProvider(),
+	tinyfish: new TinyFishProvider(),
+	you: new YouProvider(),
 	jina: new JinaProvider(),
 	perplexity: new PerplexityProvider(),
 	kimi: new KimiProvider(),
@@ -33,28 +37,33 @@ const SEARCH_PROVIDERS: Record<SearchProviderId, SearchProvider> = {
 	synthetic: new SyntheticProvider(),
 } as const;
 
+// Prefer providers that expose structured source results. Providers whose primary
+// response is a generated answer remain fallbacks rather than hiding source text
+// behind synthesis in automatic mode.
 export const SEARCH_PROVIDER_ORDER: SearchProviderId[] = [
-	"tavily",
-	"perplexity",
 	"brave",
+	"exa",
+	"parallel",
+	"tinyfish",
+	"kagi",
+	"you",
+	"synthetic",
 	"jina",
 	"kimi",
+	"zai",
+	"tavily",
+	"perplexity",
 	"anthropic",
 	"gemini",
 	"codex",
-	"zai",
-	"exa",
-	"parallel",
-	"kagi",
-	"synthetic",
 ];
 
 export function getSearchProvider(provider: SearchProviderId): SearchProvider {
 	return SEARCH_PROVIDERS[provider];
 }
 
-/** Preferred provider set via settings (default: auto) */
-let preferredProvId: SearchProviderId | "auto" = "auto";
+/** Preferred provider for calls that omit `provider` (Brave by default). */
+let preferredProvId: SearchProviderId | "auto" = "brave";
 
 /** Set the preferred web search provider from settings */
 export function setPreferredSearchProvider(provider: SearchProviderId | "auto"): void {
@@ -70,17 +79,13 @@ export function getPreferredSearchProvider(): SearchProviderId | "auto" {
 export async function resolveProviderChain(
 	preferredProvider: SearchProviderId | "auto" = preferredProvId,
 ): Promise<SearchProvider[]> {
-	const providers: SearchProvider[] = [];
-
 	if (preferredProvider !== "auto") {
-		if (await getSearchProvider(preferredProvider).isAvailable()) {
-			providers.push(getSearchProvider(preferredProvider));
-		}
+		const provider = getSearchProvider(preferredProvider);
+		return (await provider.isAvailable()) ? [provider] : [];
 	}
 
+	const providers: SearchProvider[] = [];
 	for (const id of SEARCH_PROVIDER_ORDER) {
-		if (id === preferredProvider) continue;
-
 		const provider = getSearchProvider(id);
 		if (await provider.isAvailable()) {
 			providers.push(provider);

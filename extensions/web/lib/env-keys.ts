@@ -18,6 +18,8 @@ const SECRET_COMMAND_TIMEOUT_MS = 120_000;
 
 const ENV_KEY_MAP: Record<string, string | string[]> = {
 	brave: "BRAVE_API_KEY",
+	tinyfish: "TINYFISH_API_KEY",
+	you: "YDC_API_KEY",
 	exa: "EXA_API_KEY",
 	tavily: "TAVILY_API_KEY",
 	perplexity: "PERPLEXITY_API_KEY",

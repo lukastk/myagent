@@ -5,7 +5,12 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type, StringEnum } from "@earendil-works/pi-ai";
 import { ensureSearchProviderCredentials } from "../lib/env-keys.js";
 import { SEARCH_SYSTEM_PROMPT, SEARCH_TOOL_DESCRIPTION } from "../prompts/search.js";
-import { getSearchProvider, resolveProviderChain, type SearchProvider } from "./provider.js";
+import {
+	getSearchProvider,
+	resolveProviderChain,
+	SEARCH_PROVIDER_ORDER,
+	type SearchProvider,
+} from "./provider.js";
 import type { SearchProviderId, SearchResponse } from "./types.js";
 import { SearchProviderError } from "./types.js";
 
@@ -16,6 +21,12 @@ export type { SearchProviderId, SearchResponse } from "./types.js";
 /** Web search tool parameters schema */
 const webSearchSchema = Type.Object({
 	query: Type.String({ description: "Search query" }),
+	provider: Type.Optional(
+		StringEnum(["auto", ...SEARCH_PROVIDER_ORDER] as const, {
+			description:
+				"Provider for this call. Omit to use the session preference; auto uses the configured fallback chain.",
+		}),
+	),
 	recency: Type.Optional(
 		StringEnum(["day", "week", "month", "year"], {
 			description: "Recency filter for search results",
@@ -29,16 +40,13 @@ const webSearchSchema = Type.Object({
 
 type SearchToolParams = {
 	query: string;
+	provider?: SearchProviderId | "auto";
 	recency?: "day" | "week" | "month" | "year";
 	limit?: number;
 	max_tokens?: number;
 	temperature?: number;
 	num_search_results?: number;
 };
-
-interface SearchQueryParams extends SearchToolParams {
-	provider?: SearchProviderId | "auto";
-}
 
 function formatProviderList(providers: SearchProvider[]): string {
 	return providers.map(provider => provider.label).join(", ");
@@ -147,16 +155,22 @@ function hasRenderableSearchContent(response: SearchResponse): boolean {
 /** Execute web search with provider fallback. */
 async function executeSearch(
 	_toolCallId: string,
-	params: SearchQueryParams,
+	params: SearchToolParams,
 	signal?: AbortSignal,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details: Record<string, unknown> }> {
 	await ensureSearchProviderCredentials();
-	const providers =
-		params.provider && params.provider !== "auto"
-			? (await getSearchProvider(params.provider).isAvailable())
-				? [getSearchProvider(params.provider)]
-				: await resolveProviderChain("auto")
-			: await resolveProviderChain();
+	let providers: SearchProvider[];
+	if (params.provider && params.provider !== "auto") {
+		const selectedProvider = getSearchProvider(params.provider);
+		if (!(await selectedProvider.isAvailable())) {
+			throw new Error(
+				`${selectedProvider.label} is not configured. Add its API credential to the environment or the mysetup secret vault.`,
+			);
+		}
+		providers = [selectedProvider];
+	} else {
+		providers = await resolveProviderChain(params.provider);
+	}
 	if (providers.length === 0) {
 		throw new Error(
 			"No web search provider is configured in the environment or the mysetup secret vault.",

@@ -2,9 +2,8 @@
  * Exa Web Search Provider
  *
  * High-quality neural search via Exa Search API.
- * Returns structured search results with optional content extraction.
- * Requests per-result summaries via `contents.summary` and synthesizes
- * them into a combined `answer` string on the SearchResponse.
+ * Returns structured search results with query-relevant source highlights,
+ * not per-result AI summaries or a synthesized answer.
  */
 import { getEnvApiKey } from "../../lib/env-keys.js";
 import type { SearchResponse, SearchSource } from "../types.js";
@@ -28,6 +27,7 @@ export interface ExaSearchParams {
 	exclude_domains?: string[];
 	start_published_date?: string;
 	end_published_date?: string;
+	signal?: AbortSignal;
 }
 
 interface ExaSearchResult {
@@ -37,7 +37,6 @@ interface ExaSearchResult {
 	publishedDate?: string | null;
 	text?: string | null;
 	highlights?: string[] | null;
-	summary?: string | null;
 }
 
 interface ExaSearchResponse {
@@ -59,26 +58,6 @@ export function normalizeSearchType(type: ExaSearchParamType | undefined): ExaSe
 	return type;
 }
 
-/** Maximum number of per-result summaries to include in the synthesized answer. */
-const MAX_ANSWER_SUMMARIES = 3;
-
-/**
- * Synthesize an answer string from per-result summaries returned by Exa.
- * Returns `undefined` when no non-empty summaries are available so callers
- * can leave `SearchResponse.answer` unset (matching other providers).
- */
-export function synthesizeAnswer(results: ExaSearchResult[]): string | undefined {
-	const parts: string[] = [];
-	for (const r of results) {
-		if (parts.length >= MAX_ANSWER_SUMMARIES) break;
-		const summary = r.summary?.trim();
-		if (!summary) continue;
-		const title = r.title?.trim() || r.url || "Untitled";
-		parts.push(`**${title}**: ${summary}`);
-	}
-	return parts.length > 0 ? parts.join("\n\n") : undefined;
-}
-
 /** Build the request body for `callExaSearch`. Exported for testing. */
 export function buildExaRequestBody(params: ExaSearchParams): Record<string, unknown> {
 	const body: Record<string, unknown> = {
@@ -86,7 +65,7 @@ export function buildExaRequestBody(params: ExaSearchParams): Record<string, unk
 		numResults: params.num_results ?? 10,
 		type: normalizeSearchType(params.type),
 		contents: {
-			summary: { query: params.query },
+			highlights: { query: params.query },
 		},
 	};
 
@@ -117,6 +96,7 @@ async function callExaSearch(apiKey: string, params: ExaSearchParams): Promise<E
 			"x-api-key": apiKey,
 		},
 		body: JSON.stringify(body),
+		signal: params.signal,
 	});
 
 	if (!response.ok) {
@@ -145,7 +125,7 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 			sources.push({
 				title: result.title ?? result.url,
 				url: result.url,
-				snippet: result.summary || result.text || result.highlights?.join(" ") || undefined,
+				snippet: result.highlights?.join("\n") || result.text || undefined,
 				publishedDate: result.publishedDate ?? undefined,
 				ageSeconds: dateToAgeSeconds(result.publishedDate ?? undefined),
 				author: result.author ?? undefined,
@@ -156,12 +136,8 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 	// Apply num_results limit if specified
 	const limitedSources = params.num_results ? sources.slice(0, params.num_results) : sources;
 
-	// Synthesize answer only from results that have a URL (same guard as sources loop)
-	const answer = response.results ? synthesizeAnswer(response.results.filter(r => !!r.url)) : undefined;
-
 	return {
 		provider: "exa",
-		answer,
 		sources: limitedSources,
 		requestId: response.requestId,
 	};
@@ -180,6 +156,7 @@ export class ExaProvider extends SearchProvider {
 		return searchExa({
 			query: params.query,
 			num_results: params.numSearchResults ?? params.limit,
+			signal: params.signal,
 		});
 	}
 }

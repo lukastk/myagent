@@ -542,11 +542,32 @@ general remote executor:
    `brave-cdp-mcp`. The target's installed `@playwright/mcp` owns initialize,
    `tools/list`, and every browser call; no Playwright tool/schema is duplicated.
 
-**Isolation.** OpenSSH multiplexes the connection but each command channel has
-its own shell PID. Passing that PID explicitly is load-bearing: using the shared
-sshd parent made two clients select one profile and Brave rejected the second.
-Every later `exec` preserves the chosen PID as the outer MCP process, so it stays
-alive for the entire session and disappears with the SSH channel.
+**Isolation.** Each SSH session has its own shell PID. Passing that PID
+explicitly is load-bearing: using the shared sshd parent made two clients select
+one profile and Brave rejected the second. Every later `exec` preserves the
+chosen PID as the outer MCP process, so it stays alive for the entire session and
+disappears with the SSH session.
+
+**No connection multiplexing (`SSH_TARGET_NO_MUX=1`).** `remote-playwright-mcp`
+sets this before exec'ing `ssh-target`. Multiplexing is an optimisation for many
+SHORT connections; this is a single session held open for the whole MCP lifetime
+— days, routinely — so it gains nothing from the shared master while occupying
+one of the target's `MaxSessions` channels (**default 10**) the entire time. Past
+ten, the master refuses every new channel (`Session open refused by peer`) and
+*every other* `ssh-target` call to that Mac falls back to its own connection with
+alarming stderr, indistinguishable from a broken host.
+
+Measured on mymain 2026-09-22, before this: **22** of these sessions to
+macstudio, up to **20 days** old, 5 holding channels and the other **17 already
+forced onto their own connections** — which is the proof none of them needed the
+master. One connection per agent is the honest cost, paid once per browser rather
+than per request.
+
+The opt-out travels in the environment, not argv, so that an older `ssh-target`
+ignores it rather than failing with `Unknown machine`. That also means nothing in
+the captured argv can prove it was set, so `test-remote-playwright.sh` asserts on
+the variable specifically — without that, dropping the line would regress
+silently. See myrig's AGENTS.md, "ssh-target".
 
 **Lifecycle.** Normal stdio EOF makes Playwright dispose Brave, then SSH exits.
 If the client is hard-killed, SSH channel teardown is the first cleanup path;

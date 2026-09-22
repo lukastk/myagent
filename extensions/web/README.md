@@ -6,14 +6,16 @@ Three tools for Pi: **web search**, **URL fetch**, and **browser automation**. T
 
 ### `web_search`
 
-Searches the web using whichever provider has credentials configured. Providers are tried in fallback order — if one fails or returns no usable results, the next is attempted automatically.
+Searches the web using the session's preferred provider, which defaults to Brave. Only `provider: "auto"` (or `/search-provider auto`) uses the configured fallback chain; selecting a specific provider does not silently fall back to another one.
 
 **Parameters:**
 - `query` (required) — search query
+- `provider` — provider for this call: `auto`, `brave`, `exa`, `parallel`, `tinyfish`, `kagi`, `you`, `synthetic`, `jina`, `kimi`, `zai`, `tavily`, `perplexity`, `anthropic`, `gemini`, or `codex`; omit it to use the session preference (initially `brave`)
 - `recency` — filter: `day`, `week`, `month`, `year`
 - `limit` — max results to return
 - `max_tokens` — max output tokens
 - `temperature` — sampling temperature (0-1)
+- `num_search_results` — number of search results to retrieve
 
 ### `fetch`
 
@@ -57,19 +59,23 @@ Environment variables enable providers directly. On mysetup machines, the extens
 
 | Priority | Provider | Credential names |
 |---|---|---|
-| 1 | Tavily | `TAVILY_API_KEY` |
-| 2 | Perplexity | `PERPLEXITY_API_KEY` |
-| 3 | Brave | `BRAVE_API_KEY` |
-| 4 | Jina | `JINA_API_KEY` |
-| 5 | Kimi | `KIMI_SEARCH_API_KEY` or `MOONSHOT_SEARCH_API_KEY` |
-| 6 | Anthropic | `ANTHROPIC_API_KEY` or `MY_ANTHROPIC_API_KEY` |
-| 7 | Gemini | `GEMINI_API_KEY` |
-| 8 | Codex (OpenAI) | `OPENAI_API_KEY` or `MY_OPENAI_API_KEY` |
-| 9 | Z.AI | `ZAI_API_KEY` |
-| 10 | Exa | `EXA_API_KEY` |
-| 11 | Parallel | `PARALLEL_API_KEY` |
-| 12 | Kagi | `KAGI_API_KEY` |
-| 13 | Synthetic | `SYNTHETIC_API_KEY` |
+| 1 | Brave | `BRAVE_API_KEY` |
+| 2 | Exa | `EXA_API_KEY` |
+| 3 | Parallel | `PARALLEL_API_KEY` |
+| 4 | TinyFish | `TINYFISH_API_KEY` |
+| 5 | Kagi | `KAGI_API_KEY` |
+| 6 | You.com | `YDC_API_KEY` |
+| 7 | Synthetic | `SYNTHETIC_API_KEY` |
+| 8 | Jina | `JINA_API_KEY` |
+| 9 | Kimi | `KIMI_SEARCH_API_KEY` or `MOONSHOT_SEARCH_API_KEY` |
+| 10 | Z.AI | `ZAI_API_KEY` |
+| 11 | Tavily | `TAVILY_API_KEY` |
+| 12 | Perplexity | `PERPLEXITY_API_KEY` |
+| 13 | Anthropic | `ANTHROPIC_API_KEY` or `MY_ANTHROPIC_API_KEY` |
+| 14 | Gemini | `GEMINI_API_KEY` |
+| 15 | Codex (OpenAI) | `OPENAI_API_KEY` or `MY_OPENAI_API_KEY` |
+
+The automatic order favors source-result APIs. In particular, Exa requests query-relevant highlights rather than generated per-page summaries; Perplexity, Anthropic, Gemini, and Codex remain answer-synthesis fallbacks.
 
 If `secret` is not installed, search remains environment-only. Failures from an installed `secret` command are surfaced rather than silently treating a broken vault lookup as missing credentials.
 

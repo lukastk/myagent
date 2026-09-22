@@ -9,6 +9,10 @@ set -euo pipefail
 case "${0##*/}" in
     ssh-target|runner)
         printf '%s\n' "$@" > "$0.capture"
+        # The multiplexing opt-out travels in the ENVIRONMENT, not argv (so that
+        # an older ssh-target ignores it instead of failing) — so only this can
+        # prove the client still sets it.
+        printf '%s\n' "${SSH_TARGET_NO_MUX-<unset>}" > "$0.env"
         exit 0
         ;;
     uname)
@@ -76,7 +80,12 @@ ssh_remote_command="$(sed -n '2p' "$capture")"
 expected_remote='exec env LC_ALL=C BRAVE_CDP_PROFILE_OWNER_PID=$$ "$HOME/.local/playwright-mcp/remote-playwright-host"'
 [ "$ssh_remote_command" = "$expected_remote" ] || fail "remote command changed: $ssh_remote_command"
 
-rm -f "$capture"
+# A long-lived session must not sit on the shared ControlMaster — see the client.
+ssh_no_mux="$(cat "$tmp_dir/ssh-target.env")"
+[ "$ssh_no_mux" = "1" ] \
+    || fail "client must set SSH_TARGET_NO_MUX=1, got '$ssh_no_mux'"
+
+rm -f "$capture" "$tmp_dir/ssh-target.env"
 run_failure "$tmp_dir/disallowed" env PATH="$tmp_dir:/usr/bin:/bin" \
     bash "$CLIENT" mymain
 assert_status 64 "$command_status" "disallowed target"

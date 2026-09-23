@@ -39,10 +39,15 @@
 #     headless cloud box the box's own Brave profile may be barely logged in, so
 #     "logged in as you" is weaker on Linux than macOS — the isolated Brave just
 #     inherits whatever the box profile has.)
-# The seed is tiny (~1 MB: just the key + cookie DBs; the heavy Extensions dir is
-# symlinked) so seeding at startup is cheap even for sessions that never browse.
-# Cookie-based logins (Google, GitHub, most sites) work; sites that keep auth in
-# Local Storage / IndexedDB are not covered by the cheap seed.
+# The seed is tiny (~1 MB: just the key + cookie DBs) so seeding at startup is
+# cheap even for sessions that never browse. The real profile's Extensions dir is
+# deliberately NOT linked in: extensions aren't needed for cookie logins, and a
+# proxy/VPN extension (e.g. "Proton VPN") loaded into the isolated Brave sets a
+# proxy the fresh, unauthenticated profile can't reach — ERR_PROXY_CONNECTION_FAILED
+# on every real navigation (diagnosed 2026-09-23 on macbook; data: URLs bypass the
+# proxy and so falsely looked fine). Cookie-based logins (Google, GitHub, most
+# sites) still work; sites that keep auth in Local Storage / IndexedDB are not
+# covered by the cheap seed.
 
 PW_DIR="$HOME/.local/playwright-mcp"
 CLI="${BRAVE_CDP_CLI:-$PW_DIR/node_modules/@playwright/mcp/cli.js}"
@@ -149,8 +154,10 @@ fi
 PROFILE="$PROFILES_ROOT/$PROFILE_OWNER_PID"
 
 # Seed a logged-in profile copy if we don't have one yet. Cheap: just the
-# encryption key (Local State) + cookie DBs + small prefs/login data, and a
-# symlink to the heavy read-only Extensions dir (so they load without copying).
+# encryption key (Local State) + cookie DBs + small prefs/login data. We
+# deliberately do NOT link the real Extensions dir (see the header note): a
+# connected proxy/VPN extension would poison the isolated Brave with an
+# unreachable proxy, breaking all navigation.
 if [ ! -d "$PROFILE/Default" ]; then
   mkdir -p "$PROFILE/Default" "$PROFILE/Default/Network"
   cp "$BASE_PROFILE/Local State" "$PROFILE/" 2>/dev/null
@@ -159,7 +166,6 @@ if [ ! -d "$PROFILE/Default" ]; then
     cp "$BASE_PROFILE/Default/$f" "$PROFILE/Default/" 2>/dev/null
   done
   cp "$BASE_PROFILE/Default/Network/Cookies" "$PROFILE/Default/Network/" 2>/dev/null
-  ln -s "$BASE_PROFILE/Default/Extensions" "$PROFILE/Default/Extensions" 2>/dev/null
   log "seeded isolated profile $PROFILE (owner pid $PROFILE_OWNER_PID)"
 fi
 

@@ -30,35 +30,49 @@ message in your fresh, compacted context.
 
 ## Protocol
 
-### 1. Resolve your own thread id — and REFUSE unless it is pane-verified
+### 1. Resolve your own thread id — and REFUSE unless it is verified
 
 ```zsh
-sesh info --json > /tmp/self-compact-info.json || exit 1
-TID=$(jq -r 'select(.source == "pane") | .thread.id' /tmp/self-compact-info.json)
-[ -n "$TID" ] || { echo "not pane-verified — refusing to self-compact"; exit 1; }
+TID=$(sesh whoami) || exit 1
+sesh info --id "$TID" --json > /tmp/self-compact-info.json || exit 1
 ```
 
-**The `select(.source == "pane")` is load-bearing. Do not drop it.** `sesh info` reports
-*how* it worked out which thread you are:
+**Use `sesh whoami`, not `sesh info`, to answer "who am I". Do not swap it back.**
+The two verbs resolve the same identity with deliberately opposite defaults:
 
-- **`pane`** — read from the `@sesh-thread-id` marker on the tmux pane this command
-  actually runs in. Verified, and the only provenance this skill may act on.
-- **`env`** — there was no tmux pane, so the answer rests on `$SESH_THREAD_ID` alone.
+- **`sesh whoami`** is the **gate**. It prints the uuid only when the identity is
+  *verified* — read from the `@sesh-thread-id` marker on the tmux pane this command
+  actually runs in, which a process living somewhere else cannot inherit — and exits
+  non-zero otherwise. That is why `|| exit 1` is the whole check.
+- **`sesh info`** is the **diagnostic**. When there is no pane it falls back to
+  `$SESH_THREAD_ID`, says so (`source: env`, `verified: false`), and **still exits 0**.
   That variable is frozen at launch and **inherited by every descendant**, so a detached
   or background process (a claude bg job/agent, hosted by a machine-global
   `claude daemon run` that froze whichever pane started it) carries a perfectly *valid*
   id belonging to an **unrelated thread**.
 
-This is not hypothetical. On 2026-08-25 an agent ran this skill from a background job with
-no pane; `sesh info` returned an unrelated thread's id, and the runner below **compacted
-that thread and injected this handover prompt into it** — destroying a stranger's context
-mid-task. sesh now refuses outright when the id is contradicted by your working directory,
-but corroboration is evidence, not proof: an inherited id naming a thread in the *same*
-directory tree still resolves as `env`. Requiring `pane` is what actually closes it.
+This is not hypothetical, twice over. On 2026-08-25 an agent ran this skill from a
+background job with no pane; `sesh info` returned an unrelated thread's id, and the runner
+below **compacted that thread and injected this handover prompt into it** — destroying a
+stranger's context mid-task. On 2026-09-25 a background job in a course box reported that
+its inherited id named `adi-requests`, a live thread in an entirely different project.
 
-If `TID` is empty you are **not in a pane-verified sesh thread** — stop and tell the user
-this skill can't work here, rather than compacting whatever id happened to be lying
-around. Sanity-check the target is really you before firing:
+sesh refuses outright when the id is *contradicted* by your working directory, but
+corroboration is evidence, not proof: an inherited id naming a thread in the **same**
+directory tree still resolves as `env` and still exits 0 from `info`. `whoami` is what
+actually closes that gap — it refuses an unverified id whether or not your cwd happens to
+agree with it.
+
+(An earlier form of this step read `info --json` and filtered with
+`jq -r 'select(.source == "pane") | .thread.id'`. That worked, but it was an optional
+ritual attached to a tolerant verb — exactly the kind that gets dropped. `whoami` makes the
+safe reading the default. On a machine whose sesh predates `whoami` the command fails with
+`unknown command "whoami"` and a non-zero exit, so this step **fails closed**: tell the
+user that machine needs a newer sesh rather than reaching for the old filter.)
+
+If `whoami` refuses you are **not in a verified sesh thread** — stop and tell the user this
+skill can't work here, rather than compacting whatever id happened to be lying around.
+Sanity-check the target is really you before firing:
 
 ```zsh
 jq -r '"\(.thread.name) — \(.thread.cwd) — \(.head)"' /tmp/self-compact-info.json

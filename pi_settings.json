@@ -3,6 +3,8 @@
   "defaultModel": "gpt-6-astra",
   "defaultThinkingLevel": "high",
   "defaultProjectTrust": "always",
+  "defaultTools": ["+codemode"],
+  "extensions": ["-builtin:mcp"],
   "tuiMode": "fullscreen",
   "fullscreenExitOutput": "transcript",
   "enabledModels": [

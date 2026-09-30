@@ -14,7 +14,8 @@ MCP_CONFIG="$REPO_ROOT/mcp.json"
 MCP_DEST_DIR="$HOME/.config/mcp"
 MCP_DEST="$MCP_DEST_DIR/mcp.json"
 MCP_PI_DEST_DIR="$HOME/.pi/agent"
-MCP_PI_DEST="$MCP_PI_DEST_DIR/mcp.json"
+MCP_PI_DEST="$MCP_PI_DEST_DIR/mcp-adapter.json"
+MCP_NATIVE_DEST="$MCP_PI_DEST_DIR/mcp.json"
 MODELS_CONFIG="$REPO_ROOT/models.json"
 MODELS_PI_DEST_DIR="$HOME/.pi/agent"
 MODELS_PI_DEST="$MODELS_PI_DEST_DIR/models.json"
@@ -33,7 +34,7 @@ usage() {
     cat <<EOF
 Usage: scripts/install-pi.sh [--prune]
 
-Installs Pi extensions, local skills (into ~/.agents/skills/), external skills,
+Installs and updates Pi extensions, local skills (into ~/.agents/skills/), external skills,
 and symlinks mcp.json and models.json into Pi's expected locations.
 
 Options:
@@ -376,12 +377,9 @@ if [ -f "$MCP_CONFIG" ]; then
         ln -s "$MCP_CONFIG" "$MCP_DEST"
     fi
 
-    # Also symlink to Pi-specific location. This is the config pi-mcp-adapter
-    # actually reads, so a stale REGULAR file here silently shadows the repo
-    # config (it bit us once — an old hand-written mcp.json kept Pi on a
-    # non-wrapped playwright server). Unlike ~/.config/mcp (left untouched if a
-    # user put a real file there), adopt this path: back up a non-symlink and
-    # replace it with the symlink so the repo config always wins for Pi.
+    # Adapter-owned config is explicit. Native MCP is disabled in Pi settings,
+    # so only the adapter connects; keep mcp.json for opt-in `pi mcp` CLI diagnostics.
+    # Adopt Pi paths: stale regular files must not silently shadow repo config.
     mkdir -p "$MCP_PI_DEST_DIR"
     if [ -L "$MCP_PI_DEST" ]; then
         existing="$(readlink "$MCP_PI_DEST")"
@@ -397,6 +395,16 @@ if [ -f "$MCP_CONFIG" ]; then
         fi
         echo "    mcp.json -> $MCP_PI_DEST"
         ln -s "$MCP_CONFIG" "$MCP_PI_DEST"
+    fi
+    if [ -L "$MCP_NATIVE_DEST" ]; then
+        ln -sfn "$MCP_CONFIG" "$MCP_NATIVE_DEST"
+    else
+        if [ -e "$MCP_NATIVE_DEST" ]; then
+            backup="$MCP_NATIVE_DEST.stale-$(date +%s).bak"
+            echo "    backing up $MCP_NATIVE_DEST to $backup"
+            mv "$MCP_NATIVE_DEST" "$backup"
+        fi
+        ln -s "$MCP_CONFIG" "$MCP_NATIVE_DEST"
     fi
 else
     echo "    No mcp.json found, skipping."
@@ -652,34 +660,8 @@ warm_lazy_cache() {
 warm_lazy_cache
 
 echo ""
-echo "==> Installing external extensions"
-
-if [ ! -f "$EXTENSIONS_LIST" ]; then
-    echo "    No external_extensions.txt found, skipping."
-else
-    while IFS= read -r line <&3 || [ -n "$line" ]; do
-        [ -z "$line" ] && continue
-        echo "    $line"
-        pi install "$line"
-    done 3< "$tmp_external_extensions"
-fi
-
-echo ""
-echo "==> Installing platform-specific extensions"
-
-if [ "$(uname -s)" = "Darwin" ]; then
-    if [ -s "$tmp_mac_extensions" ]; then
-        while IFS= read -r line <&3 || [ -n "$line" ]; do
-            [ -z "$line" ] && continue
-            echo "    $line (macOS)"
-            pi install "$line"
-        done 3< "$tmp_mac_extensions"
-    else
-        echo "    No macOS extension entries found, skipping."
-    fi
-else
-    echo "    Skipping macOS extensions (not on Darwin)"
-fi
+echo "==> Installing and updating external extensions (including this platform)"
+bash "$SCRIPT_DIR/install-pi-extensions.sh" "$tmp_effective_external_extensions"
 
 echo ""
 echo "==> Installing external skills"

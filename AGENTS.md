@@ -89,11 +89,11 @@ myagent/
 3. Symlinks each folder under `skills/` into `~/.agents/skills/` so Pi can discover local skills.
 4. Runs `npm install --omit=dev` for any skill that has a `package.json`.
 5. Shallow-merges `pi_settings.json` onto `~/.pi/agent/settings.json` (our keys win, runtime keys preserved — see "Pi settings" below).
-6. Symlinks `mcp.json` to `~/.config/mcp/mcp.json` and `~/.pi/agent/mcp.json`.
+6. Symlinks `mcp.json` to `~/.config/mcp/mcp.json`, `~/.pi/agent/mcp-adapter.json`, and `~/.pi/agent/mcp.json` (the last is for explicit native CLI diagnostics; native session MCP is disabled).
    Then symlinks `models.json` to `~/.pi/agent/models.json` (a regular file already there is backed up to `models.json.stale-<epoch>.bak` and adopted). Symlink, not merge: Pi never writes `models.json` and re-reads it every time `/model` opens — see "Custom models" below.
 7. Runs `scripts/configure-pi-tool-binaries.sh` to configure Pi tool binaries.
 8. Installs Playwright MCP (patched): persistently installs `@playwright/mcp` into `~/.local/playwright-mcp` and applies three patches — a `Browser.setDownloadBehavior` skip (all platforms, for the CDP-connect/opt-out path), a Chromium-switches patch (**macOS only** — drop `--use-mock-keychain`/`--password-store=basic` so a Brave that Playwright *launches* can decrypt the seeded profile's cookies; Linux deliberately keeps `--password-store=basic` for its portable cookie key), and the `browser_close` tool description (all platforms; upstream ships "Close the page", which misled agents into thinking it only closes a tab and leaving the per-agent Brave resident all session; it actually disposes the whole browser process, so the patched text tells agents to close it when done). The installer locates each patch target by string search, since current playwright-core (≥1.61) bundles these into `lib/coreBundle.js` (formerly the separate `crBrowser.js` / `chromiumSwitches.js`). It symlinks `brave-cdp-mcp`, `mcp-lazy`, `mcp-lazy-shim`, `remote-playwright-mcp`, and `remote-playwright-host` next to that install, and warms the lazy-shim cache (`mcp-lazy-cache.json`) once so a non-browsing session skips the ~128 MB Node `cli.js` (see "Lazy MCP proxy shim" below). (The Playwright servers in `mcp.json` run those launchers — see below.)
-9. Reads `external_extensions.txt` (+ `external_extensions_mac.txt` on macOS) and runs `pi install <source>`.
+9. Reads `external_extensions.txt` (+ `external_extensions_mac.txt` on macOS), deduplicates the platform-effective set, and calls `scripts/install-pi-extensions.sh`: `pi install --no-approve <source>` then `pi update --no-approve <source>` for each. Only declared sources update; pins stay pinned, git branches advance, Pi itself and project/unrelated packages are untouched. Failures stop the install. Our declared MCP fork is mutually exclusive with `npm:pi-mcp-adapter`; the helper removes the npm copy after successfully installing/updating the fork, even without `--prune`.
 10. Reads `external_skills.txt` and runs `npx -y skills add <source> -g -y -a codex -a claude-code -a pi`. The explicit `-a` agent list (repeated per agent — a comma-joined value is parsed as one invalid name) stops the skills CLI's `-y` fast path from force-adding every skills-family agent, including project-only PromptScript, which would otherwise fail every global install.
 11. With `--prune`, removes stale local symlinks and reconciles installed extensions/skills against what's declared:
     - **External extensions** are reconciled against the declared set (`external_extensions.txt`, plus `external_extensions_mac.txt` only on macOS): it iterates `pi list` (what Pi actually has) and `pi remove`s anything not declared — including orphans myagent never installed itself. This is *platform-strict*: a mac-only extension installed on Linux is removed there. There is intentionally no extension state file (a record of "what we installed" can't see orphans — that's how `pi-slopchop` survived a prior prune); the prune deletes the legacy `.install-state/external_extensions.txt` if present.
@@ -378,6 +378,18 @@ similar. A symlink would push that runtime churn back into this repo on every
 launch; a wholesale copy would wipe it. The overlay keeps this file a clean,
 minimal statement of desired settings while letting Pi manage its own state.
 
+**`defaultTools: ["+codemode"]`** enables Pi's built-in JavaScript tool
+orchestration (Pi >= 0.99.0) without replacing the existing tool selection.
+The default `codemode.mode: "on"` keeps ordinary tools directly callable; we
+do not force `"only"` mode. MCP belongs to our `lukastk/pi-mcp-adapter` fork
+(`myagent-codemode` branch), with **`extensions: ["-builtin:mcp"]`** explicitly
+disabling native MCP so there is exactly one connection owner. Native codemode
+remains enabled. The fork retains lazy/idle lifecycle and bridges native tool
+discovery, annotations, and structured results; see `docs/pi-mcp-codemode.md`.
+The tested host is Pi 0.99.1; re-run the integration tests on future upgrades.
+Native MCP 0.99.1 itself still connects enabled servers at startup and ignores
+`lifecycle`/`directTools`.
+
 **`tuiMode: "fullscreen"`** is declared here so the wheel scrolls Pi's transcript
 inside tmux. It is the ONLY reason the setting is set. Pi's `regular` mode renders
 inline on the normal screen and never asks the terminal for mouse tracking, so
@@ -441,13 +453,20 @@ MCP server definitions live in `mcp.json` at the repo root. The Pi installer
 symlinks it to the shared/Pi config paths; the Claude and Codex installers
 translate the same declarations into those clients' user-scoped configs.
 
-The `pi-mcp-adapter` extension (listed in `external_extensions.txt`) reads this config and bridges MCP tools into Pi. Servers are lazy — they spawn on first tool use and auto-disconnect after idle timeout.
+Our fork of `pi-mcp-adapter` (declared in `external_extensions.txt`) owns MCP
+connections. It reads the shared config and `mcp-adapter.json`; `/mcp-adapter`
+is its manager (`/mcp` is an alias while native MCP is disabled). Servers are
+lazy and idle-disconnected. `settings.deferWithMissingMetadata: true` also
+prevents a cold/stale catalog from spawning servers at startup: discover an
+uncached server explicitly with `mcp({ connect: "server-name" })` once. Cached
+tools are available to native discovery without reconnecting. `scriptMode:
+false` disables the redundant `mcpScript`; use native `codemode` for orchestration.
 
 A server entry may set `"directTools": true` (e.g. the `playwright` server does) to promote that server's tools to **direct Pi tools** rather than routing them through the on-demand discovery proxy — they show up as first-class tools without a `/mcp` promote step. This field is Pi-specific: `scripts/install-claude.sh` builds the Claude payload from a whitelist (`command`/`args`/`cwd`/`env` for stdio servers, or `type`/`url`/`transport`/`headers` for url-based remote servers), so `directTools` is naturally dropped for Claude Code.
 
 The `playwright` server is special-cased: instead of an `npx`-spawned server, it runs the `brave-cdp-mcp` launcher in the patched persistent install at `~/.local/playwright-mcp`, fronted by the **lazy shim** (`command: bash`, `args: ["mcp-lazy", "bash", "brave-cdp-mcp"]`, `cwd: ~/.local/playwright-mcp`) that `scripts/install-pi.sh` creates, patches, and links the launchers into. `mcp-lazy` runs the Python `mcp-lazy-shim` when python3 + a warmed cache are present (serving `initialize`/`tools/list` from cache so a non-browsing session holds an ~12 MB shim instead of a ~128 MB Node `cli.js`), and otherwise falls straight through to `brave-cdp-mcp` — see the "Lazy MCP proxy shim" section below. See also the "Per-agent isolated Brave" section and the install-pi.sh step above.
 
-A second `playwright-main` server runs the **same launcher** with `env: { BRAVE_CDP_REAL: "1" }`, so it connects to the user's real interactive Brave on `:9222` (launched via the `brave-mcp` shell function in myrig) instead of launching an isolated one. It exists so an agent can opt into driving the user's live window (tools namespaced `mcp__playwright-main__*`) without the user restarting the session — both servers are registered from the start; the agent just picks the toolset. It's `directTools: false` (unlike the isolated `playwright`'s `true`) so its ~20 browser tools stay behind the `/mcp` discovery proxy and don't double the direct-tool count in every session; promote them on demand. Caveat: agents must **not** call `browser_close` on this server — it would close the user's real Brave window (the global browser-usage note in myrig spells this out).
+A second `playwright-main` server runs the **same launcher** with `env: { BRAVE_CDP_REAL: "1" }`, so it connects to the user's real interactive Brave on `:9222` (launched via the `brave-mcp` shell function in myrig) instead of launching an isolated one. It exists so an agent can opt into driving the user's live window (tools namespaced `mcp__playwright-main__*`) without the user restarting the session — both servers are registered from the start; the agent just picks the toolset. It's `directTools: "search"` (unlike the isolated `playwright`'s `true`): cached tools use Pi's native `deferred` exposure, discoverable/callable from codemode without adding full declarations to each prompt. Caveat: agents must **not** call `browser_close` on this server — it would close the user's real Brave window (the global browser-usage note in myrig spells this out).
 
 **`:9222` memory gate.** Claude Code and Codex spawn every configured stdio MCP server *eagerly* at session start (only Pi honours `lifecycle: lazy` — both surfaces confirmed to have no lazy stdio option). So a globally-registered `playwright-main` used to leave one resident ~65 MB Node wrapper **per session** attached to a `:9222` that is not running — on a headless box it can never be used, yet under a many-session sweep this dead weight reached multiple GB of swap and took mymain down (2026-08-06). The launcher now **probes the CDP port in `BRAVE_CDP_REAL=1` mode and `exit 0`s before the MCP handshake when nothing is listening** (see "Opt-out / fallback to connect-mode" below), so `playwright-main` costs nothing except when your interactive Brave is actually up. A headless/background agent showing `playwright-main` as *failed* in `/mcp` is the **expected, healthy** state; run `brave-mcp` to bring up `:9222` (then reconnect via `/mcp`) to use it. This gate is a stopgap for the eager-spawn root cause; the durable fix is a lazy proxy shim (a tiny process that answers `initialize`/`tools/list` cheaply and only spawns the heavy Node cli.js on first tool call), which also reclaims the *isolated* `playwright` wrapper for non-browsing sessions.
 
@@ -456,9 +475,11 @@ Two remote servers use the same upstream tool surface on a chosen Mac:
 - **`playwright-macstudio`** — the preferred always-on, high-RAM acquisition worker.
 - **`playwright-macbook`** — the opt-in laptop worker; it can be asleep/offline.
 
-Both are `directTools: false` so Pi does not eagerly add two more copies of the
-Playwright schemas to every prompt. Their transport and lifecycle are described
-under "Remote Playwright workers" below.
+Both use `directTools: "search"`: cached tools are registered with native Pi
+`deferred` exposure and namespace `mcp__<server>`, not eagerly declared.
+For example `searchTools("navigate", { namespace: "mcp__playwright-macstudio" })`
+inside codemode finds the callable adapter tool names. Their transport and
+lifecycle are described under "Remote Playwright workers" below.
 
 ### Per-agent isolated Brave (`brave-cdp-mcp`)
 

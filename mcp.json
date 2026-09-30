@@ -1,4 +1,8 @@
 {
+  "settings": {
+    "deferWithMissingMetadata": true,
+    "scriptMode": false
+  },
   "mcpServers": {
     "playwright": {
       "command": "bash",
@@ -13,21 +17,21 @@
       "cwd": "~/.local/playwright-mcp",
       "env": { "BRAVE_CDP_REAL": "1" },
       "lifecycle": "lazy",
-      "directTools": false
+      "directTools": "search"
     },
     "playwright-macstudio": {
       "command": "bash",
       "args": ["remote-playwright-mcp", "macstudio"],
       "cwd": "~/.local/playwright-mcp",
       "lifecycle": "lazy",
-      "directTools": false
+      "directTools": "search"
     },
     "playwright-macbook": {
       "command": "bash",
       "args": ["remote-playwright-mcp", "macbook"],
       "cwd": "~/.local/playwright-mcp",
       "lifecycle": "lazy",
-      "directTools": false
+      "directTools": "search"
     }
   }
 }

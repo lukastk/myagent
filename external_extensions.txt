@@ -3,7 +3,9 @@
 # Formats: npm:<package>, git:<repo>, or local path
 
 # Local clone in extensions/pi-hashline-edit replaces npm:pi-hashline-edit
-npm:pi-mcp-adapter
+# Our native-codemode bridge, tracking the integration branch. The installer
+# enforces that this and npm:pi-mcp-adapter cannot both be installed.
+git:github.com/lukastk/pi-mcp-adapter@myagent-codemode
 # pi-slopchop is removed: its pi-render.ts dynamically resolves
 # @earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js by
 # walking up from its own install path, which doesn't visit mise's global

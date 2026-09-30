@@ -21,7 +21,7 @@ npm install -g @earendil-works/pi-coding-agent
 
 - Symlinks local extensions from `extensions/` into `~/.pi/agent/extensions/`
 - Symlinks local skills from `skills/` into `~/.agents/skills/`
-- Installs external extensions listed in `external_extensions.txt` via `pi install`
+- Installs **and updates** declared external extensions (`pi install` then targeted `pi update`); respects pins and does not update Pi itself or unrelated/project packages
 - Installs external skills listed in `external_skills.txt` via `npx skills add <source> -g -y`
 - Applies `mcp.json` to Pi, Claude Code, and Codex
 - Symlinks `models.json` (custom Pi providers/models) into `~/.pi/agent/models.json`
@@ -29,6 +29,21 @@ npm install -g @earendil-works/pi-coding-agent
 
 Use `--pi-only`, `--claude-only`, or `--codex-only` to apply only one agent
 surface. Restart/reload the relevant client after installation.
+
+## Pi code mode and MCP
+
+Requires Pi 0.99.1 or newer. Native `codemode` is enabled alongside ordinary
+tools. MCP connections remain owned by our [adapter fork](https://github.com/lukastk/pi-mcp-adapter/tree/myagent-codemode),
+which preserves lazy/idle lifecycle and adds native discovery and structured
+results. Native MCP is explicitly disabled to avoid duplicate connections.
+`mcpScript` is disabled; use `codemode` for multi-tool scripts.
+
+The installer removes the upstream npm adapter after installing the fork: they
+are mutually exclusive, even without `--prune`. Configuration lives in this
+repo's `mcp.json`, linked to the shared path and Pi's `mcp-adapter.json`. `/mcp-adapter`
+manages it; `/mcp` remains an alias while native MCP is disabled.
+
+See [design, tests, and maintenance](docs/pi-mcp-codemode.md).
 
 ## Playwright browsers
 
@@ -42,11 +57,11 @@ Playwright browser tools; the server name chooses where and how Brave runs.
 | `playwright-macstudio` | A lazy, isolated Brave on Mac Studio over SSH | Default remote acquisition worker |
 | `playwright-macbook` | A lazy, isolated Brave on MacBook over SSH | Opt-in laptop worker; may be asleep/offline |
 
-The remote servers are deliberately non-direct in Pi: select/promote the one
-you need through `/mcp`, then use its normal `browser_*` tools. Claude Code and
-Codex expose the same tools under the corresponding MCP server namespace. A
-plain-language agent instruction is enough, for example: “Use
-`playwright-macstudio` to inspect this page.”
+The remote servers use deferred native discovery in Pi: native `codemode` can
+find their cached tools with `searchTools("navigate", { namespace:
+"mcp__playwright-macstudio" })` without connecting. If a server has no cached
+catalog yet, use `mcp({ connect: "playwright-macstudio" })` once.
+Claude Code and Codex expose the same browser tools in their own namespaces.
 
 ### Remote worker setup
 

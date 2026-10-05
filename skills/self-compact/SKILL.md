@@ -10,8 +10,9 @@ summary at an arbitrary moment, take control: write your own handover prompt, tr
 `/compact` deliberately, and re-anchor yourself with that handover the moment compaction
 finishes.
 
-This works because you are a sesh-managed agent living in a tmux pane, and `sesh thread
-send` can type into *your own* pane. A runner process — owned by the tmux server, so no
+This works because you are a sesh-managed agent living in a tmux pane. Pi uses
+`sesh thread command` for compaction and literal RPC `thread send` for the handover;
+Claude/Codex retain terminal delivery. A runner process — owned by the tmux server, so no
 agent harness can kill it — waits for your current turn to end, sends `/compact`, waits
 for compaction to finish, then sends your handover — which arrives as the first user
 message in your fresh, compacted context.
@@ -23,8 +24,8 @@ message in your fresh, compacted context.
 - **Don't use** on a small session — claude refuses with "not enough messages", pi with
   `Nothing to compact (session too small)` (it keeps the most recent ~20k tokens, so
   anything smaller is uncompactable). If you're small enough to hit these, you didn't
-  need to compact. (Harmless if you do: the error is loud in the pane and the handover
-  still arrives and runs as a normal prompt.)
+  need to compact. (Pi's command fails loudly and stops the runner: no handover is sent. The
+  Claude/Codex terminal workflow still sends the handover after the refusal.)
 - **Doesn't apply** to headless threads (no pane — `sesh thread send` 409s) or outside
   sesh entirely. Precondition check below.
 
@@ -110,10 +111,20 @@ UUID and paths you chose, never externally-derived strings):
 exec > /tmp/self-compact-<tid8>.log 2>&1
 TID=<full-thread-uuid>
 HANDOVER=/tmp/self-compact-<tid8>.md
+AGENT=<pi-or-claude-or-codex-from-info>
 sesh await "$TID" --timeout 15m || exit 0
-sesh thread send --id "$TID" --text "/compact" || exit 0
-sleep 8
-sesh await "$TID" --timeout 30m || exit 0
+case "$AGENT" in
+  pi)
+    # API 53 + pi-rpc-socket protocol 2: actual completion/error, not kickoff.
+    sesh thread command --id "$TID" --text '/compact' --timeout 30m || exit 0
+    ;;
+  claude|codex)
+    sesh thread send --id "$TID" --text '/compact' || exit 0
+    sleep 8
+    sesh await "$TID" --timeout 30m || exit 0
+    ;;
+  *) echo "Unsupported agent: $AGENT"; exit 0 ;;
+esac
 sesh thread send --id "$TID" --text "$(cat "$HANDOVER")"
 exit 0
 ```
@@ -139,12 +150,17 @@ Why each piece:
 - **First `await`** — blocks until *your own current turn ends*, so `/compact` lands on
   an idle pane. Load-bearing for pi: its harness `compact()` throws `busy` if the agent
   is mid-turn. (claude/codex would merely queue it, but idle-first is right for all.)
-- **`sleep 8`** — compaction must be *visibly running* before the second `await`, which
+- **Pi `thread command`** — waits on the real completion/error callback. Requires
+  API 53 and pi-rpc-socket 0.2.0 loaded in this process (update + `/reload`). If
+  unavailable, STOP; never substitute `thread send '/compact'` (literal Pi input).
+  Timeout does not cancel: inspect/poll the request UUID from the log, do not resend.
+- **Claude/Codex `sleep 8`** — compaction must be *visibly running* before the second `await`, which
   polls the daemon's cached mesh view (300ms probe tick, ~1s to confirm busy) and
   returns immediately on idle. Without the sleep it could fire on a stale idle reading.
-- **Second `await`** — compaction shows as `busy` (the spinner animates the pane);
+- **Claude/Codex second `await`** — compaction shows as `busy` (the spinner animates the pane);
   idle again = compaction done. 30m is generous headroom for huge contexts.
-- **Send `$(cat "$HANDOVER")`** — multi-line text goes through tmux bracketed paste, so
+- **Send `$(cat "$HANDOVER")`** — multi-line text goes through Pi RPC or, for
+  Claude/Codex, tmux bracketed paste, so
   the markdown arrives intact as one message. Command substitution output is passed as
   a single argv to `sesh` and never re-parsed by the shell, so arbitrary handover
   content (backticks, `$()`) is safe. The tmp file exists to dodge the nested-quoting
@@ -175,12 +191,18 @@ authoritative: re-read what it points to, then continue the task. Clean up
 - **No handover after ~10 min** (allow for a long compaction): the user (or a
   supervisor thread) should read `/tmp/self-compact-<tid8>.log`. `await: still busy
   after 15m` means the turn never ended in time; a 409 on `send` means the pane died.
-- **`/compact` errored in the pane** (session too small — see above): the handover
-  still arrives and runs; nothing is lost except the compaction itself.
+- **`/compact` errored** (session too small — see above): Pi stops without sending
+  the handover; read the runner log. Claude/Codex's terminal workflow still delivers it.
 - **Supervising from outside**: `sesh thread capture --id <tid>` shows the pane live;
   `sesh await <tid>` blocks until the turn/compaction finishes.
 
-## Verified behavior (2026-07-06, sesh schema 38)
+## Historical behavior (2026-07-06, sesh schema 38)
+
+The Pi terminal-send recipe below is superseded by API 53's explicit command path;
+it is not a supported fallback. Current real-Pi RPC regression cells assert draft
+preservation, mid-tool steering, literal slash input, and persisted compaction.
+
+### Original verification
 
 End-to-end tested on disposable threads for all three agent kinds — `/compact` via
 `sesh thread send`, compaction reading as `busy`, mid-compaction sends queuing and

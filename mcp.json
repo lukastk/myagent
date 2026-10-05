@@ -32,6 +32,11 @@
       "cwd": "~/.local/playwright-mcp",
       "lifecycle": "lazy",
       "directTools": "search"
+    },
+    "wispr-flow": {
+      "url": "https://api.wisprflow.ai/connect/mcp",
+      "lifecycle": "lazy",
+      "directTools": "search"
     }
   }
 }

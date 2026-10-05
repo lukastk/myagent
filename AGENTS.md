@@ -613,6 +613,36 @@ change plus an explicit allow-list/config update here; do not accept raw hosts.
 R&D and measurements are in
 `_dev/experiments/02_remote_stdio_playwright_worker/FINDINGS.md`.
 
+### Wispr Flow (`wispr-flow`) — remote HTTP, OAuth
+
+`https://api.wisprflow.ai/connect/mcp` — Wispr Flow's hosted MCP server, giving
+**read-only** access to the Notetaker data: meeting summaries/transcripts and
+attendees, Scratchpad notes, tasks, and calendar events. The first `url`-only
+(no `command`) entry in `mcp.json`, so it exercises the remote path all three
+installers already had: Claude gets `{"type":"http","url":…}` via
+`claude mcp add-json`, Codex gets `codex mcp add --url`, and Pi's adapter
+auto-detects OAuth for an HTTP server from the URL alone.
+
+**Auth is per-client and interactive — nothing is stored in this repo.** Each
+harness keeps its own token in its own credential store, so authorise once per
+harness:
+
+- Claude Code — `claude mcp login wispr-flow` (or `/mcp` in a session)
+- Codex — `codex mcp login wispr-flow` (`--no-browser` over SSH)
+- Pi — `/mcp-auth wispr-flow`
+
+The browser flow needs a **federated** login (Google / Apple / Microsoft / SSO)
+and must finish within 5 minutes; Wispr Flow email+password accounts cannot
+complete MCP authorization. There is no API key, so no `secret` entry and no
+`env` interpolation.
+
+`directTools: "search"` (like the remote Playwright workers, not the isolated
+`playwright`): its tools are registered with Pi's native `deferred` exposure and
+found via `searchTools("meeting", { namespace: "mcp__wispr-flow" })` rather than
+declared in every prompt. With `deferWithMissingMetadata: true` a cold catalog
+means one explicit `mcp({ connect: "wispr-flow" })` before the tools are
+discoverable.
+
 ### Adding an MCP server
 
 Edit `mcp.json` and add an entry under `mcpServers`:

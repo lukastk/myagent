@@ -69,3 +69,40 @@ commit (myrig/myagent baselines already include the separate global-stage work).
 - **obako** — baseline `19c9002`; `docs/README.md` and architecture/development/framework/node-runtime/obsidian-toolkit references.
 - **sesh** — baseline `079f50a`; `_dev/ENGINEERING_INDEX.md`, `_dev/engineering-history-h91-h121.md`, `_dev/TESTING.md`, `_dev/OPERATIONS.md`.
 - **subswitcher** — baseline `f242566`; `docs/agent-reference/{credential-lifecycle,usage-and-cycling,harnesses-and-testing,oauth-endpoints}.md`.
+
+## Fleet uptake and validation (2026-10-07)
+
+GitHub recovered from its earlier push failures; all ten trims and the preceding
+global-stage commits were pushed. Using the canonical fast-forward-only sync,
+57 of 60 repo/machine checkouts now contain their reviewed trim (including local
+pocket4). Dirty checkouts were skipped before calling sync—no stash, merge, reset
+or cleanup was attempted:
+
+- **macbook / myrig:** modified `home/^macbook^/.skhdrc`.
+- **mymain / myrig:** modified `scripts/post/all.sh`.
+- **mymain / obako:** untracked `node_modules/`.
+
+Shared instruction/reference/Codex wiring passes `audit-context.py --installed`
+on **pocket4, macstudio, ideapad and termux**. The latter three received home-only
+installation (`install.sh <machine> --no-setup`); pocket4 was installed earlier.
+macbook and mymain still need their myrig update/home install; their audit failures
+are not waived. Myagent's MCP/extension checkout is updated everywhere.
+Machine-private ignored memory was not changed and can make other machines'
+eager totals larger than the pocket4 table above.
+
+The actual SDK model-request/discovery/call test passes on **pocket4 (Pi 1.0.4)**
+and **macbook, macstudio, mymain, ideapad (Pi 0.99.1)**. Fleet testing exposed a
+wrong major-version assumption in the new test: both hosts put declarations in
+the initial system message's `toolsAdded`, not 0.99.1's top-level `Context.tools`.
+The test now asserts the observed shape directly; no production fallback was added.
+
+**Termux remains a separate validation blocker:** Pi 0.99.1 / Node 26.4.0 cannot
+load the web extension's `sharp` dependency on `android-arm64`. Repeating the load
+with the pre-change extension tree from `4837f0b` and the same installed
+dependencies reproduced the identical error. This is pre-existing, not a passing
+test or a context-trim regression; dependency repair is outside this pass.
+
+No services or existing agent sessions were restarted. Checkout/home installation
+does not replace an already loaded prompt: reload Pi or restart Claude/Codex when
+convenient. Source fast-forwards also picked up previously pending upstream commits
+on older checkouts; no sibling application builds or service deployments were run.

@@ -60,7 +60,8 @@ node scripts/test-context-exposure.mjs "$(npm root -g)/@earendil-works/pi-coding
 The SDK test uses a temporary HOME and no real credentials, checks the parent
 model request as well as the registry, and calls the deferred Puppeteer close
 operation through real QuickJS without launching a browser. It explicitly
-handles Pi 0.99's `Context.tools` and Pi 1.x's system-message `toolsAdded` format.
+asserts the initial system-message `toolsAdded` declarations on both tested hosts,
+Pi 0.99.1 and 1.0.4; do not infer the request shape from the package's major version.
 
 For the optional real isolated-Brave smoke test, set
 `CONTEXT_TEST_MCP_ADAPTER` to the installed adapter's absolute `index.ts` and

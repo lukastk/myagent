@@ -103,10 +103,10 @@ if (process.argv[3] !== 'isolated') {
     const browser = pi.getAllTools().find(t => t.name === 'browser');
     assert.equal(browser.exposure, 'deferred');
     assert(browser.description.includes('Puppeteer'));
-    // Pi 1.x carries declarations in system-message deltas; 0.99 uses Context.tools.
+    // Both tested hosts (Pi 0.99.1 and 1.0.4) carry declarations in system-message deltas.
     const version = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')).version;
-    const initialTools = Number(version.split('.')[0]) >= 1
-      ? requests[0].messages[0].toolsAdded : requests[0].tools;
+    assert.equal(requests[0].messages[0].role, 'system', `Expected initial system message on Pi ${version}`);
+    const initialTools = requests[0].messages[0].toolsAdded;
     assert(Array.isArray(initialTools), `Expected model-visible declarations on Pi ${version}`);
     assert(initialTools.some(t => t.name === 'fetch'));
     assert(initialTools.some(t => t.name === 'web_search'));

@@ -266,7 +266,11 @@ else
 
         if [ -f "$ext_dir/package.json" ]; then
             echo "      installing npm dependencies..."
-            (cd "$ext_dir" && npm install --omit=dev)
+            if [ "$ext_name" = web ]; then
+                bash "$SCRIPT_DIR/install-web-dependencies.sh" "$ext_dir"
+            else
+                (cd "$ext_dir" && npm install --omit=dev)
+            fi
         fi
     done
 fi

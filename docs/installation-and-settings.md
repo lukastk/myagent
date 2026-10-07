@@ -45,7 +45,7 @@ myagent/
 
 **`scripts/install-pi.sh`** — Pi-side:
 1. Symlinks each folder under `extensions/` into `~/.pi/agent/extensions/` so Pi auto-discovers them.
-2. Runs `npm install --omit=dev` for any extension that has a `package.json`.
+2. Runs `npm install --omit=dev` for extensions with `package.json`; web goes through `scripts/install-web-dependencies.sh` for Android's native Sharp/libvips build and a real image probe on every platform. See [web dependency setup](../extensions/web/README.md#termux--android-native-image-support).
 3. Symlinks each folder under `skills/` into `~/.agents/skills/` so Pi can discover local skills.
 4. Runs `npm install --omit=dev` for any skill that has a `package.json`.
 5. Shallow-merges `pi_settings.json` onto `~/.pi/agent/settings.json` (our keys win, runtime keys preserved — see "Pi settings" below).

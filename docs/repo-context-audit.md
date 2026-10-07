@@ -70,7 +70,7 @@ commit (myrig/myagent baselines already include the separate global-stage work).
 - **sesh** — baseline `079f50a`; `_dev/ENGINEERING_INDEX.md`, `_dev/engineering-history-h91-h121.md`, `_dev/TESTING.md`, `_dev/OPERATIONS.md`.
 - **subswitcher** — baseline `f242566`; `docs/agent-reference/{credential-lifecycle,usage-and-cycling,harnesses-and-testing,oauth-endpoints}.md`.
 
-## Fleet uptake and validation (2026-10-07)
+## Initial fleet uptake (2026-10-07; superseded by follow-up below)
 
 GitHub recovered from its earlier push failures; all ten trims and the preceding
 global-stage commits were pushed. Using the canonical fast-forward-only sync,
@@ -106,3 +106,62 @@ No services or existing agent sessions were restarted. Checkout/home installatio
 does not replace an already loaded prompt: reload Pi or restart Claude/Codex when
 convenient. Source fast-forwards also picked up previously pending upstream commits
 on older checkouts; no sibling application builds or service deployments were run.
+
+## Follow-up: deployment, skills and measurement (2026-10-07)
+
+The user approved finishing deployment, fixing Termux, trimming the largest
+skills and measuring fresh context. The three previously blocked updates are
+now complete: inspection proved the existing edits/cache did not overlap incoming
+changes. Canonical fast-forward sync and home-only installation preserved tracked
+file hashes, complete working/index diffs, status and persistent stash lists;
+Obako's untracked `.vite` cache was also verified unchanged.
+**All 60 original repo/machine trims are present; shared wiring passes on all six.**
+
+### Four skill bodies reduced and distributed
+
+| Skill | Before bytes | After bytes | Source commit |
+|---|---:|---:|---|
+| sesh-cli | 99,549 | 7,129 | `d31e47f` |
+| myvault | 34,204 | 8,422 | `8a87ac2` |
+| mysetup-navigator | 24,668 | 7,423 | `e02cebc` |
+| boxyard-cli | 26,037 | 6,863 | `462ac4f` |
+
+Total: **184,458 → 29,837 bytes (83.8% smaller)**. This saves context when
+a skill is loaded, not startup catalogue space: original frontmatter and discovery
+semantics are unchanged. Detailed content lives in bundled task-routed references.
+All four commits were pushed, installed on all six machines with the declared
+Skills CLI source/agent options, and their **complete installed trees** compared
+by hash with source. Pi/Claude paths resolve to the shared installed copies;
+other skill bodies and inventory are unchanged (macbook has 22, others 21).
+
+### Termux fixed; publication currently blocked
+
+`cc369ec` adds the normal installer's supported native Sharp build against Termux
+libvips and patched Node headers, with compatible build dependencies and a real
+image probe. Sharp itself and all pre-existing locked dependency entries are
+unchanged; no tool/image fallback or runtime behavior change was introduced.
+Parent independently reran seven installer tests, seven image tests, and the
+existing real Pi exposure/discovery/call test on Termux successfully. Pocket4
+passes too. See [web setup and validation](../extensions/web/README.md#termux--android-native-image-support).
+
+GitHub is again rejecting myagent pushes with HTTP 500; the last verified remote
+main is `0de9c3d`. The fix is committed locally and working on Termux, but Termux's
+eight-file test overlay still matches `cc369ec` byte-for-byte and must not be
+discarded. Publish the reviewed commit, reconcile those owned identical files
+into the fast-forwarded checkout, and verify clean status. Other repositories'
+skill deployments are already published and complete.
+
+### Actual controlled SDK measurements
+
+[Fresh-session context](fresh-session-context.md), implemented in `8f50cf0`,
+documents the approved, explicitly limited profile and reproducible command.
+The full operational extension set was not started: hooks, RPC and MCP have real
+side effects. These are **not default-session totals or provider billing**.
+Parent independently reproduced 88 fresh fake-provider requests on Pi 1.0.4.
+Initial estimates are roughly 6,931 characters/4 in neutral cwd and 9,043–9,401
+in the three measured repos. The catalogue remains unchanged; the captured
+explicit sesh-cli load falls from 24,626.5 to 1,719 characters/4. All four skill
+before/after measurements are in that report. Claude/Codex were not measured.
+The measurement commit shares the pending myagent publication blocker.
+
+No existing agent sessions were reloaded, and no production services restarted.

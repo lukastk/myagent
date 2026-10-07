@@ -88,9 +88,9 @@ A full startup is not passive. Inspection found:
 - The MCP adapter owns initialization, auth, transport/cache, and dynamic
   resource behavior. Native MCP can connect during session startup.
 
-The full installed startup was **not executed**. The user explicitly approved
-the controlled subset instead. On the validation machine, excluded installed
-extension entrypoints were:
+The full installed startup was **not executed**. This measurement deliberately
+uses the explicitly labelled controlled subset instead. On the validation machine,
+excluded installed extension entrypoints were:
 
 `compact-tools`, `darkweb`, `hooks`, `message-barrel`, `privatemode`,
 `sesh-agent-state`, `session-model`, `pi-rpc-socket`, `pi-mcp-adapter`.

@@ -87,6 +87,9 @@ Caching or collapsing TUI output does not remove model-visible context.
 
 ## Repository context trimming (2026-10-07)
 
+The [ten-repository review and measurements](repo-context-audit.md) cover the
+wider mysetup pass. The sections below describe this myagent checkout only.
+
 `AGENTS.md` is now the operating guide and task-to-reference map. Its former
 sections are preserved in ordinary, on-demand docs:
 

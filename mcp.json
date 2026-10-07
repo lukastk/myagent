@@ -9,7 +9,7 @@
       "args": ["mcp-lazy", "bash", "brave-cdp-mcp"],
       "cwd": "~/.local/playwright-mcp",
       "lifecycle": "lazy",
-      "directTools": true
+      "directTools": "search"
     },
     "playwright-main": {
       "command": "bash",

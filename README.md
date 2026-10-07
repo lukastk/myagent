@@ -45,6 +45,9 @@ manages it; `/mcp` remains an alias while native MCP is disabled.
 
 See [design, tests, and maintenance](docs/pi-mcp-codemode.md).
 
+See [shared context policy and audit](docs/agent-context.md) for global instruction
+ownership, context budgets, deferred browser tools, and regression tests.
+
 ## Playwright browsers
 
 myagent exposes four Playwright MCP servers. All use the ordinary upstream
@@ -57,11 +60,12 @@ Playwright browser tools; the server name chooses where and how Brave runs.
 | `playwright-macstudio` | A lazy, isolated Brave on Mac Studio over SSH | Default remote acquisition worker |
 | `playwright-macbook` | A lazy, isolated Brave on MacBook over SSH | Opt-in laptop worker; may be asleep/offline |
 
-The remote servers use deferred native discovery in Pi: native `codemode` can
-find their cached tools with `searchTools("navigate", { namespace:
-"mcp__playwright-macstudio" })` without connecting. If a server has no cached
-catalog yet, use `mcp({ connect: "playwright-macstudio" })` once.
-Claude Code and Codex expose the same browser tools in their own namespaces.
+All servers use deferred native discovery in Pi, including local Playwright.
+Native `codemode` can find cached local tools with
+`searchTools("navigate", { namespace: "mcp__playwright" })` without connecting.
+If the catalog is cold, use `mcp({ connect: "playwright" })` once. The same
+pattern applies to the named remote servers. Claude Code and Codex expose
+the browser tools through their own native MCP namespaces/discovery.
 
 ### Remote worker setup
 

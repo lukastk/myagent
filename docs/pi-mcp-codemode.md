@@ -35,8 +35,10 @@ The narrow adapter patch fixes the tool boundary without replacing its lifecycle
   The fork also prevents first-use initialization from bootstrapping unrelated
   lazy servers when the entire cache file is absent.
 - `settings.scriptMode: false`: native codemode is the one script tool we expose.
-- Local Playwright stays direct; main and both remote workers use
+- All servers, including local Playwright and Wispr Flow, use
   `directTools: "search"`, mapped to native Pi `deferred` exposure in our fork.
+  Local Playwright changed from direct to deferred on 2026-10-07 to avoid
+  carrying its entire schema catalogue in non-browser sessions.
 
 Within codemode:
 

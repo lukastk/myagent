@@ -7,7 +7,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createFetchTool } from "./fetch/index.js";
 import { createBrowserTool } from "./browser/index.js";
-import { SEARCH_SYSTEM_PROMPT } from "./prompts/search.js";
 import { createWebSearchTool } from "./search/index.js";
 import {
 	getPreferredSearchProvider,
@@ -28,19 +27,13 @@ function formatProviderChoice(provider: SearchProviderPreference): string {
 }
 
 export default function (pi: ExtensionAPI) {
-	// Register all three tools
+	// Search and fetch are everyday tools; the alternate browser is opt-in via discovery.
 	pi.registerTool(createWebSearchTool());
 	pi.registerTool(createFetchTool(pi));
 
 	const { tool: browserTool, cleanup: browserCleanup, setHeadless } = createBrowserTool(pi);
-	pi.registerTool(browserTool);
-
-	// System prompt injection
-	pi.on("before_agent_start", async (event) => {
-		return {
-			systemPrompt: event.systemPrompt + "\n\n" + SEARCH_SYSTEM_PROMPT,
-		};
-	});
+	pi.registerTool({ ...browserTool, exposure: "deferred" });
+	pi.on("session_shutdown", browserCleanup);
 
 	// Slash commands
 	pi.registerCommand("search-provider", {

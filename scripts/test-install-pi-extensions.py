@@ -77,9 +77,9 @@ class InstallExtensionsTest(unittest.TestCase):
         self.assertIn('+codemode', settings['defaultTools'])
         self.assertTrue(config['settings']['deferWithMissingMetadata'])
         self.assertFalse(config['settings']['scriptMode'])
-        self.assertEqual(config['mcpServers']['playwright']['directTools'], True)
-        for name in ['playwright-main', 'playwright-macstudio', 'playwright-macbook']:
-            self.assertEqual(config['mcpServers'][name]['directTools'], 'search')
-        self.assertTrue(all(s['lifecycle'] == 'lazy' for s in config['mcpServers'].values()))
+        for name, server in config['mcpServers'].items():
+            with self.subTest(server=name):
+                self.assertEqual(server['directTools'], 'search')
+                self.assertEqual(server['lifecycle'], 'lazy')
 
 if __name__ == '__main__': unittest.main()

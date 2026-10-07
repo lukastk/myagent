@@ -3,10 +3,10 @@
  * Adapted from oh-my-pi/packages/coding-agent/src/prompts/tools/browser.md
  */
 export const BROWSER_TOOL_DESCRIPTION = `\
-Navigates, clicks, types, scrolls, drags, queries DOM content, and captures screenshots.
+Optional Puppeteer browser, separate from the user's Brave profile. Prefer Playwright MCP for ordinary browsing or authenticated/user-visible sessions. Navigates, clicks, types, queries DOM content, and captures screenshots.
 
 <instruction>
-- For fetching static web content (articles, docs, issues/PRs, JSON, PDFs, feeds), prefer the \`read\` tool with a URL — it returns clean reader-mode text without spinning up a browser. Use this tool only when you need JS execution, authentication, or interactive actions.
+- For static web content (articles, docs, JSON, PDFs, feeds), prefer the \`fetch\` tool with a URL; it returns extracted text without spinning up a browser. Use this tool only when Puppeteer's separate browser is specifically useful.
 - \`"open"\` starts a headless session (or implicitly on first action); \`"goto"\` navigates to \`url\`; \`"close"\` releases the browser
 - \`"observe"\` captures a numbered accessibility snapshot — prefer \`click_id\`/\`type_id\`/\`fill_id\` using returned \`element_id\` values; flags: \`include_all\`, \`viewport_only\`
 - \`"click"\`, \`"type"\`, \`"fill"\`, \`"press"\`, \`"scroll"\`, \`"drag"\` for selector-based interactions — prefer ARIA/text selectors (\`p-aria/[name="Sign in"]\`, \`p-text/Continue\`) over brittle CSS

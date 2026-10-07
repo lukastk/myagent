@@ -36,6 +36,16 @@ Fetches and extracts content from URLs. Includes 76 site-specific scrapers for o
 
 Headless browser automation via Puppeteer with 14 anti-detection stealth scripts.
 
+This alternate browser is **deferred**, not declared in every model request.
+Find it via `searchTools("Puppeteer")` in Pi's codemode and inspect/call the
+returned tool. Prefer Playwright MCP for normal browsing and the user's
+Brave profile; Puppeteer does not share that profile. `/browser` still
+controls its headed/headless mode. Session shutdown releases the browser.
+
+Search and fetch remain directly exposed. The research system prompt is
+passed to search-provider requests only; the extension does not inject a
+research persona into the parent coding agent.
+
 **Actions:** `open`, `goto`, `observe`, `click`, `click_id`, `type`, `type_id`, `fill`, `fill_id`, `press`, `scroll`, `drag`, `wait_for_selector`, `evaluate`, `get_text`, `get_html`, `get_attribute`, `extract_readable`, `screenshot`, `close`
 
 **Key features:**

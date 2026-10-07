@@ -1,10 +1,12 @@
 # Shared agent context policy
 
-Implemented 2026-10-07. Scope: shared/global instructions and Pi tool exposure.
-Project `AGENTS.md` / `AGENTS.local.md`, the agents-local loader, and existing
-skills are deliberately unchanged; their trimming is a separate user-approved
-follow-up. Some older repo-level AGENTS descriptions still call local Playwright
-"direct"; the current declaration is `mcp.json`, with the policy below.
+The shared/global instructions and Pi tool-exposure pass was implemented
+2026-10-07. A separate repository-only pass now keeps `AGENTS.md` concise and
+routes installer, extension/skill tutorials, browser architecture and operational
+history to on-demand topic docs. `AGENTS.local.md`, `CLAUDE.md`, the agents-local
+loader, existing skills and runtime configuration are unchanged by that pass.
+The current declaration is `mcp.json`: **all** servers use search/deferred
+exposure, including local Playwright.
 
 ## Ownership and loading
 
@@ -82,6 +84,51 @@ On pocket4, using `o200k_base` to compare source text (not provider billing):
 The audit CLI deliberately uses dependency-free **characters / 4** estimates,
 labelled as such; it does not silently claim these are tokenizer measurements.
 Caching or collapsing TUI output does not remove model-visible context.
+
+## Repository context trimming (2026-10-07)
+
+`AGENTS.md` is now the operating guide and task-to-reference map. Its former
+sections are preserved in ordinary, on-demand docs:
+
+- [Workspace operations](workspace-operations.md): box adoption and SSH guidance.
+- [Installation and settings](installation-and-settings.md): installer steps,
+  prune ownership, settings/model rationale and fullscreen history.
+- [Extension development](extension-development.md): ownership inventory,
+  tutorials, APIs, lifecycle events and keyboard constraints.
+- [Skill development](skill-development.md): authoring and distribution tutorial.
+- [MCP and browsers](mcp-and-browsers.md): server/OAuth guidance, isolation,
+  keychain, lazy shim, remote transport and dated incident history.
+
+No runtime, skill, loader, global configuration or private local-memory content
+changed. `CLAUDE.md` still imports only the concise core and private local memory;
+none of the topic docs is an eager import. Historical observations in the moved
+guides are labelled as such, and stale local-Playwright direct-exposure guidance
+is corrected to match `mcp.json`.
+
+### Project eager-source measurement
+
+UTF-8 bytes and **characters / 4 estimates**, not tokenizer/provider billing:
+
+| Project source | Before bytes | After bytes | Before estimate | After estimate |
+|---|---:|---:|---:|---:|
+| `AGENTS.md` | 46,642 | 6,935 | 11,553.5 | 1,733.25 |
+| Private local memory (unchanged) | 1,384 | 1,384 | 345.5 | 345.5 |
+| `CLAUDE.md` import stub (unchanged) | 28 | 28 | 7 | 7 |
+| **Total including imports, counted once** | **48,054** | **8,347** | **11,906** | **2,085.75** |
+
+This is an **82.6% byte reduction** in the repository eager-source inventory,
+including local memory without publishing it. Pi loads core + local memory
+(48,026 → 8,319 source bytes); the conservative total also counts the Claude
+stub, not another copy of its imported content. Harness-generated headings and
+unchanged global instructions, tool schemas and skill metadata are outside this
+repository delta. The root instruction scan found no other project instruction
+files/imports; ordinary linked docs are not counted as eager content.
+
+Validation: read-only context audit, local link/anchor and concrete path checks,
+section-preservation comparison against the former guide, whitespace/diff review,
+and confirmation that private memory and the Claude import stub are unchanged.
+No browser, integration suite, installation, push or deployment was run for this
+documentation-only pass.
 
 ## Deployment
 

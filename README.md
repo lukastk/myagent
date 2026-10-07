@@ -110,4 +110,7 @@ backstops.
 - **Local skill:** create `skills/<name>/SKILL.md`, then run `./install.sh`.
 - **External skill:** add a line to `external_skills.txt`, then run `./install.sh`.
 
-For full details and examples, see [AGENTS.md](AGENTS.md).
+For the concise operating guide and task-routing map, see [AGENTS.md](AGENTS.md).
+Detailed references: [installation/settings](docs/installation-and-settings.md),
+[extensions](docs/extension-development.md), [skills](docs/skill-development.md),
+and [MCP/browser operations](docs/mcp-and-browsers.md).

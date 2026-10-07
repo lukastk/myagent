@@ -28,7 +28,7 @@ The narrow adapter patch fixes the tool boundary without replacing its lifecycle
 - `mcp.json`: shared server declarations; installer links them to
   `~/.config/mcp/mcp.json` and `~/.pi/agent/mcp-adapter.json`.
 - `~/.pi/agent/mcp.json` remains linked for explicit `pi mcp ...` CLI diagnostics.
-  **Those CLI commands use native MCP and can eagerly connect all four servers.**
+  **Those CLI commands use native MCP and can eagerly connect all configured servers.**
 - `settings.deferWithMissingMetadata: true`: no automatic connections even with
   a cold/stale catalog. Discover an uncached server explicitly with
   `mcp({ connect: "playwright-macstudio" })`; subsequent sessions use its cache.

@@ -40,7 +40,8 @@ class WebInstallTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='web-install-test-')
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # macOS exposes /var via /private/var; compare physical cwd paths.
+        self.root = Path(self.temp.name).resolve()
         self.web = self.root / 'web with spaces $(touch INJECTED) `touch ALSO_INJECTED`'
         self.web.mkdir()
         self.prefix = self.root / 'termux prefix'

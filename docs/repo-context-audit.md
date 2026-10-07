@@ -134,22 +134,25 @@ Skills CLI source/agent options, and their **complete installed trees** compared
 by hash with source. Pi/Claude paths resolve to the shared installed copies;
 other skill bodies and inventory are unchanged (macbook has 22, others 21).
 
-### Termux fixed; publication currently blocked
+### Termux fixed, published and verified
 
 `cc369ec` adds the normal installer's supported native Sharp build against Termux
 libvips and patched Node headers, with compatible build dependencies and a real
 image probe. Sharp itself and all pre-existing locked dependency entries are
 unchanged; no tool/image fallback or runtime behavior change was introduced.
 Parent independently reran seven installer tests, seven image tests, and the
-existing real Pi exposure/discovery/call test on Termux successfully. Pocket4
-passes too. See [web setup and validation](../extensions/web/README.md#termux--android-native-image-support).
+existing real Pi exposure/discovery/call test successfully on all six machines.
+The web-only dependency helper's image probe and shared wiring audit pass too.
+A macOS-only test-path assumption (`/var` vs `/private/var`) was corrected by
+resolving the temporary root; assertions were retained, not weakened.
+See [web setup and validation](../extensions/web/README.md#termux--android-native-image-support).
 
-GitHub is again rejecting myagent pushes with HTTP 500; the last verified remote
-main is `0de9c3d`. The fix is committed locally and working on Termux, but Termux's
-eight-file test overlay still matches `cc369ec` byte-for-byte and must not be
-discarded. Publish the reviewed commit, reconcile those owned identical files
-into the fast-forwarded checkout, and verify clean status. Other repositories'
-skill deployments are already published and complete.
+GitHub briefly rejected myagent pushes with HTTP 500 again, then accepted the
+reviewed fix and measurement commits in `6dbfd04`. All six myagent checkouts were
+updated and the narrow web dependency installer run. Termux's eight-file test
+overlay was first verified byte-identical to the incoming commit, then reconciled
+through canonical fast-forward sync; its checkout is clean, with no residual stash.
+The earlier modified myrig files remain the user's untouched work.
 
 ### Actual controlled SDK measurements
 
@@ -162,6 +165,6 @@ Initial estimates are roughly 6,931 characters/4 in neutral cwd and 9,043–9,40
 in the three measured repos. The catalogue remains unchanged; the captured
 explicit sesh-cli load falls from 24,626.5 to 1,719 characters/4. All four skill
 before/after measurements are in that report. Claude/Codex were not measured.
-The measurement commit shares the pending myagent publication blocker.
+The measurement tool and report are published alongside the fix.
 
 No existing agent sessions were reloaded, and no production services restarted.

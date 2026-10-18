@@ -122,14 +122,37 @@ for name, cfg in (data.get("mcpServers") or {}).items():
             server_argv = ["sh", "-c", wrapped]
         add_argv += ["--", *server_argv]
 
-    operations.append((name, add_argv))
+    # Servers whose authorization is an interactive, per-client browser flow.
+    # `codex mcp add --url` writes the entry into config.toml and only THEN runs
+    # the OAuth handshake, so an unattended install cannot finish it.
+    interactive_auth = bool(cfg.get("interactiveAuth") or cfg.get("interactive_auth"))
+
+    operations.append((name, add_argv, interactive_auth))
 
 with open(desired_path, "w", encoding="utf-8") as desired_file:
-    for name, _ in operations:
+    for name, _, _ in operations:
         desired_file.write(name + "\n")
 
-for name, add_argv in operations:
+def is_registered(name):
+    return subprocess.run(
+        ["codex", "mcp", "get", name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode == 0
+
+
+for name, add_argv, interactive_auth in operations:
     print(f"    {name}", flush=True)
+
+    # Re-registering an interactive-auth server is actively harmful: `codex mcp
+    # remove` drops the token Codex stored for it, so a fleet update would
+    # de-authorize a server that was logged in by hand. Leave it untouched once
+    # it exists; there is nothing to reapply but the url we already wrote.
+    if interactive_auth and is_registered(name):
+        print("        already registered; leaving its authorization intact", flush=True)
+        continue
+
     subprocess.run(
         ["codex", "mcp", "remove", name],
         stdout=subprocess.DEVNULL,
@@ -138,6 +161,16 @@ for name, add_argv in operations:
     )
     result = subprocess.run(add_argv, stdout=subprocess.DEVNULL, check=False)
     if result.returncode:
+        # An interactive-auth server exits non-zero on the OAuth step ("timed out
+        # waiting for OAuth callback") even though the entry landed. Downgrade
+        # that to a notice, but only once the entry is confirmed present, so a
+        # genuine registration failure is still fatal.
+        if interactive_auth and is_registered(name):
+            print(
+                f"        registered; authorization is still pending -- run: codex mcp login {name}",
+                flush=True,
+            )
+            continue
         raise SystemExit(f"Failed to add Codex MCP server {name!r} (exit {result.returncode})")
 PY
 fi

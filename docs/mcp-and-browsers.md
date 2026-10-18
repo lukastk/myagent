@@ -198,6 +198,25 @@ harness:
 - Codex — `codex mcp login wispr-flow` (`--no-browser` over SSH)
 - Pi — `/mcp-auth wispr-flow`
 
+Because that flow cannot run unattended, the entry carries
+`"interactiveAuth": true`. `scripts/install-codex.sh` treats such a server
+differently in two ways, both of which only matter for Codex — `codex mcp add
+--url` writes the entry into `config.toml` and only *then* starts the OAuth
+handshake, while Claude's `add-json` and Pi's adapter just record the server:
+
+- **It is never re-registered once present.** The installer's ordinary path is
+  `codex mcp remove` followed by `codex mcp add`, and that remove drops the token
+  Codex stored, so every fleet update used to silently de-authorize a server that
+  had been logged in by hand.
+- **Its OAuth timeout is not an install failure.** An unattended add ends in
+  `Error: timed out waiting for OAuth callback` and exit 1 even though
+  registration succeeded. The installer confirms the entry really landed with
+  `codex mcp get` and then reports that authorization is pending, instead of
+  aborting. A failed add that registered nothing is still fatal. Before this,
+  one un-authorized server failed the whole `install myagent` step — on
+  2026-10-18 it did so on macstudio, macbook and ideapad in a single
+  `update-myrig-all`.
+
 The browser flow needs a **federated** login (Google / Apple / Microsoft / SSO)
 and must finish within 5 minutes; Wispr Flow email+password accounts cannot
 complete MCP authorization. There is no API key, so no `secret` entry and no
@@ -227,6 +246,10 @@ Edit `mcp.json` and add an entry under `mcpServers`:
   }
 }
 ```
+
+Add `"interactiveAuth": true` for a server whose authorization is an interactive
+browser flow, so the Codex installer neither re-registers it nor fails the
+install over an OAuth timeout — see the Wispr Flow section above.
 
 Then run `./install.sh` and `/reload` in Pi.
 

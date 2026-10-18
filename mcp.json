@@ -36,7 +36,8 @@
     "wispr-flow": {
       "url": "https://api.wisprflow.ai/connect/mcp",
       "lifecycle": "lazy",
-      "directTools": "search"
+      "directTools": "search",
+      "interactiveAuth": true
     }
   }
 }

@@ -92,7 +92,13 @@ task-relevant references below, not the whole documentation set.
   `fullscreenExitOutput: "transcript"`: intentional tmux wheel support,
   with alt-screen/capture limitations documented in the settings guide.
 - Fail loudly on unsupported configuration or install/update errors rather
-  than silently dropping fields or hiding a broken setup.
+  than silently dropping fields or hiding a broken setup. An expected error may
+  be reported as a notice instead, but ONLY where the success condition is
+  positively verified — never inferred from a check not run. The one case is an
+  `interactiveAuth` MCP server, whose `codex mcp add` exits non-zero on an OAuth
+  step it cannot finish unattended: the installer downgrades that only after
+  `codex mcp get` confirms the entry landed, and an add that registered nothing
+  stays fatal.
 
 ## Task → reference
 

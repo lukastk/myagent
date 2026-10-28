@@ -20,7 +20,7 @@ All four accounts use the default OAuth client. Tokens are already authorized an
 
 **Authorized services:** all four accounts hold the same 10 user-OAuth services — `gmail`, `calendar`, `drive`, `docs`, `sheets`, `chat`, `contacts`, `tasks`, `people`, `classroom` (check with `gog auth list`).
 
-The CLI also exposes `slides`, `groups`, and `keep`, but those scopes are **not** authorized on any account — calling them fails until you re-auth with a wider `--services` list (see "Re-authenticating"). `groups` (Cloud Identity) and `keep` are Workspace-only — `keep` additionally needs a service account with domain-wide delegation — so they're only viable on `lukas@jackfruiting.com` if set up.
+The CLI also exposes `slides`, `groups`, and `keep`, whose scopes are **not** authorized on any account. `slides create` still works, because gog creates the presentation through the Drive API (verified 2026-10-28); the other `slides` subcommands use the Slides API and fail until you re-auth with a wider `--services` list (see "Re-authenticating"). `groups` (Cloud Identity) and `keep` are Workspace-only — `keep` additionally needs a service account with domain-wide delegation — so they're only viable on `lukas@jackfruiting.com` if set up.
 
 ## Common commands
 
@@ -76,7 +76,38 @@ gog --account lukas.kikuchi@gmail.com sheets update <spreadsheetId> '<range>' va
 gog --account lukas.kikuchi@gmail.com sheets append <spreadsheetId> '<range>' val1 val2 ...
 ```
 
-To create a native Google Doc from a `.md` file: `gog --account … drive upload foo.md --parent <folderId> --convert-to doc` (see "Uploading markdown as a native Google Doc" below).
+To create a native Google Doc from a `.md` file: `gog --account … drive upload foo.md --parent <folderId> --convert-to doc` (see "Uploading markdown as a native Google Doc" below). To create an **empty** Doc, Sheet or Slides file, use `create-gdoc` (next section).
+
+## Creating an empty Doc, Sheet or Slides: `create-gdoc`
+
+When Lukas asks to **create a new Google Doc, Sheet or Slides** file, use the
+myrig command `create-gdoc` (`home/.mybin/create-gdoc` in myrig, on PATH on
+every machine) rather than hand-rolling `gog … create`. It finds the account's
+Share folder by name, applies the Share naming convention, and can share the
+file in one step.
+
+```bash
+create-gdoc "Meeting notes" -u kikuchi.lukas -t doc -s private   # → "2026-10-28 Meeting notes"
+create-gdoc -u lukas.kikuchi@gmail.com -t sheet -s private        # no name → "2026-10-28 14-05-33"
+create-gdoc Plan -u jack -t doc --from plan.md -s private         # Markdown file → new Doc
+url=$(create-gdoc Deck -u jack -t slides -s private --no-open)    # summary on stderr, URL on stdout
+create-gdoc Deck -u jack -t slides -s private --json              # {id,name,type,url,account,folder,share,permission}
+```
+
+- `-u/--user` takes an email or a unique part of one (`jack`, `jimmy`, `kikuchi.l`, `lukas.kikuchi`); the accounts come from `gog auth list`.
+- `-t/--type` is `doc`, `sheet` or `slides`; `-s/--share` is `private`, `viewer`, `commenter` or `editor` (the last three grant anyone with the link that role, link-only).
+- Other flags: `--folder <id>` to create outside Share, `--from <file.md>` (doc only), `--no-date`, `--open`/`--no-open` (macOS opens the file by default), `--json`, `--dry-run`, `--help`.
+- **Agents must pass `-u`, `-t` and `-s` explicitly.** The fzf pickers only run when stdin is a terminal; without one `-u` is required and the defaults are `doc` and `private`. Use a sharing level other than `private` only when Lukas has explicitly asked for the file to be shared.
+- Created files are named `YYYY-MM-DD <name>` (a space after the date), which is the form Lukas chose for files created this way; uploads keep the `YYYY-MM-DD_` form described in the next section.
+
+Raw gog equivalents, for a different folder or no date prefix:
+
+```bash
+gog --account … docs create "Title" --parent <folderId> [--file notes.md] --json    # result: file.id / file.webViewLink
+gog --account … sheets create "Title" --parent <folderId> --json                    # result: spreadsheetId / spreadsheetUrl
+gog --account … slides create "Title" --parent <folderId> --json                    # drive scope suffices
+gog --account … drive share <fileId> --to anyone --role reader|commenter|writer --force --no-input
+```
 
 ## Default Drive upload target: the Share folder
 
@@ -100,6 +131,15 @@ Do not touch the file's sharing or permissions. Placing a file in Share does not
 grant anyone-with-link or public access, and you must not add any. Leave
 permissions exactly as Drive sets them by default, unless Lukas explicitly asks
 to share the file.
+
+The IDs below were re-verified on 2026-10-28 with the query that finds the
+folder by name, which is also what `create-gdoc` runs at run time:
+
+```bash
+gog --account <email> drive ls --parent root \
+  --query "name = 'Share' and mimeType = 'application/vnd.google-apps.folder' and trashed = false" \
+  --json | jq -r '.files[].id'
+```
 
 | Account | Share folder ID |
 |---|---|
@@ -201,6 +241,8 @@ Important gotchas the Drive markdown importer hits (whether via gog or the API):
 ## Environment
 
 `GOG_KEYRING_PASSWORD` is set via shell init on all machines — no manual auth or password prompts needed. The CLI works in both interactive and non-interactive (SSH/script) contexts.
+
+myrig's installer keeps gog at the latest release on every OS (Homebrew `gogcli` with `latest=True` on macOS, `go install …@latest` on Linux); `gog --version` shows a machine's build (v0.47.1 everywhere on 2026-10-28). An `unknown flag` error means that machine's gog is stale, not that the flag is wrong.
 
 ## Re-authenticating
 

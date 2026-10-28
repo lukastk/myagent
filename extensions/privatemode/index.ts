@@ -28,11 +28,17 @@
  * runs with `--restart unless-stopped`, so it survives pi crashes and (on
  * Linux) reboots; stop it deliberately with `podman stop privatemode-proxy`.
  *
- * Non-fatal load: if anything goes wrong (no podman, proxy won't come up, no
- * models, missing API key) this extension NEVER throws — throwing aborts pi
- * startup entirely (which is what bricked pi on macstudio). It warns loudly
- * (console + an interactive `session_start` notification) and registers
- * nothing, so pi continues with its other providers.
+ * Non-blocking startup: extension loading performs local podman/container setup
+ * only. It registers a small known-good model seed immediately and uses Pi's
+ * `refreshModels` lifecycle for remote `/v1/models` discovery. Pi calls that
+ * lifecycle cache-only during startup, so an expired key or unavailable remote
+ * service cannot hold every Pi launch for the proxy's retry window. Opening the
+ * model picker performs the cancellable network refresh and persists its catalog.
+ *
+ * Non-fatal load: if local setup fails (no podman, proxy cannot start, missing
+ * key) this extension NEVER throws — throwing aborts pi startup entirely. It
+ * warns loudly (console + an interactive `session_start` notification) and
+ * registers nothing, so pi continues with its other providers.
  *
  * `/privatemode`            — show proxy + model status (or why it's unavailable)
  * `/privatemode logs`       — tail proxy container logs
@@ -46,9 +52,10 @@ const CONTAINER_PORT = "8080"; // port inside the container (proxy default)
 const WORKSPACE_VOLUME = "privatemode-proxy-workspace";
 const WORKSPACE_DIR = "/app/privatemode-proxy";
 
-const STARTUP_TIMEOUT_MS = 90_000;
-const STARTUP_POLL_MS = 1_000;
-const PROBE_TIMEOUT_MS = 3_000;
+const REFRESH_TIMEOUT_MS = 90_000;
+const REFRESH_POLL_MS = 1_000;
+const PROBE_TIMEOUT_MS = 5_000;
+const FALLBACK_MODEL_IDS = ["gpt-oss-120b", "kimi-k2.6"] as const;
 
 interface ModelsResponse {
   data: Array<{ id: string }>;
@@ -106,14 +113,28 @@ function baseUrlFor(hostPort: string): string {
   return `http://${hostPort}/v1`;
 }
 
+class ProxyHttpError extends Error {
+  constructor(
+    readonly status: number,
+    statusText: string
+  ) {
+    super(`proxy /v1/models returned HTTP ${status}${statusText ? ` ${statusText}` : ""}`);
+    this.name = "ProxyHttpError";
+  }
+}
+
 /** Fetch /v1/models from the proxy. Sends the bearer key because the proxy
  * runs keyless and forwards the Authorization header to Privatemode. */
 async function fetchModels(
   apiKey: string,
   baseUrl: string,
-  timeoutMs = PROBE_TIMEOUT_MS
+  timeoutMs = PROBE_TIMEOUT_MS,
+  signal?: AbortSignal
 ): Promise<ModelsResponse> {
   const ctrl = new AbortController();
+  const forwardAbort = () => ctrl.abort(signal?.reason);
+  if (signal?.aborted) forwardAbort();
+  else signal?.addEventListener("abort", forwardAbort, { once: true });
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const resp = await fetch(`${baseUrl}/models`, {
@@ -121,7 +142,7 @@ async function fetchModels(
       headers: { Authorization: `Bearer ${apiKey}` },
     });
     if (!resp.ok) {
-      throw new Error(`proxy /v1/models returned HTTP ${resp.status}`);
+      throw new ProxyHttpError(resp.status, resp.statusText);
     }
     const body = (await resp.json()) as ModelsResponse;
     if (!body || !Array.isArray(body.data)) {
@@ -130,6 +151,7 @@ async function fetchModels(
     return body;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", forwardAbort);
   }
 }
 
@@ -176,22 +198,35 @@ async function ensureContainerRunning(pi: ExtensionAPI): Promise<void> {
 async function waitForProxy(
   pi: ExtensionAPI,
   apiKey: string,
-  baseUrl: string
+  baseUrl: string,
+  signal?: AbortSignal
 ): Promise<ModelsResponse> {
-  const deadline = Date.now() + STARTUP_TIMEOUT_MS;
+  const deadline = Date.now() + REFRESH_TIMEOUT_MS;
   let lastErr: unknown = null;
   while (Date.now() < deadline) {
+    if (signal?.aborted) {
+      throw new Error("privatemode: model refresh cancelled");
+    }
     try {
-      return await fetchModels(apiKey, baseUrl);
+      return await fetchModels(apiKey, baseUrl, PROBE_TIMEOUT_MS, signal);
     } catch (e) {
+      // Authentication and other client errors cannot improve by retrying. The
+      // proxy itself can take a few seconds to return them, but startup no longer
+      // waits for this path because remote discovery lives in refreshModels.
+      if (e instanceof ProxyHttpError && e.status >= 400 && e.status < 500) {
+        throw e;
+      }
+      if (signal?.aborted) {
+        throw new Error("privatemode: model refresh cancelled");
+      }
       lastErr = e;
-      await sleep(STARTUP_POLL_MS);
+      await sleep(REFRESH_POLL_MS);
     }
   }
   const logs = await podman(pi, ["logs", "--tail", "40", CONTAINER_NAME]);
   throw new Error(
     `privatemode: proxy did not become healthy within ${
-      STARTUP_TIMEOUT_MS / 1000
+      REFRESH_TIMEOUT_MS / 1000
     }s (base URL ${baseUrl}).\n` +
       `last probe error: ${
         lastErr instanceof Error ? lastErr.message : String(lastErr)
@@ -200,14 +235,9 @@ async function waitForProxy(
   );
 }
 
-/**
- * Resolve the proxy's base URL and a healthy model list. Ensures the container
- * is running, discovers its host port, and probes until healthy.
- */
-async function resolveProxy(
-  pi: ExtensionAPI,
-  apiKey: string
-): Promise<{ baseUrl: string; models: ModelsResponse }> {
+/** Ensure the local proxy exists and return its dynamically published URL.
+ * Remote health/model discovery is deliberately deferred to refreshModels. */
+async function resolveProxyLocation(pi: ExtensionAPI): Promise<string> {
   await ensureContainerRunning(pi);
   const hostPort = await containerHostPort(pi);
   if (!hostPort) {
@@ -217,14 +247,7 @@ async function resolveProxy(
         `and restart pi.`
     );
   }
-  const baseUrl = baseUrlFor(hostPort);
-  let models: ModelsResponse;
-  try {
-    models = await fetchModels(apiKey, baseUrl);
-  } catch {
-    models = await waitForProxy(pi, apiKey, baseUrl);
-  }
-  return { baseUrl, models };
+  return baseUrlFor(hostPort);
 }
 
 // Models surfaced by /v1/models that aren't chat-completion models.
@@ -235,6 +258,7 @@ function modelConfig(id: string) {
   const reasoning = /kimi|gpt-oss/i.test(id);
   const isKimi = /kimi/i.test(id);
   return {
+    type: "chat" as const,
     id,
     name: id,
     reasoning,
@@ -248,10 +272,15 @@ function modelConfig(id: string) {
   };
 }
 
+function configsFromIds(ids: readonly string[]) {
+  return ids.filter(isChatModel).map(modelConfig);
+}
+
 export default async function (pi: ExtensionAPI) {
   let loadError: string | null = null;
+  let refreshError: string | null = null;
   let activeBaseUrl: string | null = null;
-  let apiKey: string | undefined = process.env.PRIVATEMODE_API_KEY;
+  const apiKey = process.env.PRIVATEMODE_API_KEY;
 
   try {
     if (!apiKey) {
@@ -272,33 +301,76 @@ export default async function (pi: ExtensionAPI) {
       );
     }
 
-    const { baseUrl, models } = await resolveProxy(pi, apiKey);
-    const chatModelIds = models.data.map((m) => m.id).filter(isChatModel);
-    if (chatModelIds.length === 0) {
-      throw new Error(
-        "proxy /v1/models returned no chat models (got: " +
-          `${JSON.stringify(models.data.map((m) => m.id))})`
-      );
-    }
-
-    activeBaseUrl = baseUrl;
+    activeBaseUrl = await resolveProxyLocation(pi);
+    const baseUrl = activeBaseUrl;
     pi.registerProvider("privatemode", {
       name: "PrivateMode AI",
       baseUrl,
       apiKey: "$PRIVATEMODE_API_KEY",
       api: "openai-completions",
-      models: chatModelIds.map(modelConfig),
+      // Seed startup synchronously. A successful refresh persists and restores
+      // the provider's current IDs; these two keep the configured scope stable
+      // before the first successful discovery on a machine.
+      models: configsFromIds(FALLBACK_MODEL_IDS),
+      refreshModels: async (context) => {
+        const storedIds = context.stored?.models.map((model) => model.id) ?? [];
+        const cached = configsFromIds(storedIds);
+        if (!context.allowNetwork) {
+          return cached.length > 0 ? cached : configsFromIds(FALLBACK_MODEL_IDS);
+        }
+
+        try {
+          let models: ModelsResponse;
+          try {
+            models = await fetchModels(
+              apiKey,
+              baseUrl,
+              PROBE_TIMEOUT_MS,
+              context.signal
+            );
+          } catch (e) {
+            if (e instanceof ProxyHttpError && e.status >= 400 && e.status < 500) {
+              throw e;
+            }
+            models = await waitForProxy(pi, apiKey, baseUrl, context.signal);
+          }
+
+          const discovered = configsFromIds(models.data.map((model) => model.id));
+          if (discovered.length === 0) {
+            throw new Error(
+              "proxy /v1/models returned no chat models (got: " +
+                `${JSON.stringify(models.data.map((model) => model.id))})`
+            );
+          }
+          refreshError = null;
+          await context.publish({
+            persist: {
+              checkedAt: Date.now(),
+              models: discovered.map((model) => ({
+                ...model,
+                provider: "privatemode",
+                baseUrl,
+                api: "openai-completions" as const,
+              })),
+            },
+          });
+          return discovered;
+        } catch (e) {
+          refreshError = e instanceof Error ? e.message : String(e);
+          throw e;
+        }
+      },
     });
   } catch (e) {
     loadError = e instanceof Error ? e.message : String(e);
     // Non-fatal: warn loudly but do NOT rethrow — throwing aborts pi startup
-    // entirely (which is what bricked pi on macstudio). pi continues with its
-    // other providers; the user can inspect via /privatemode.
+    // entirely. Pi continues with its other providers; inspect via /privatemode.
     console.warn(`[privatemode] provider unavailable: ${loadError}`);
   }
 
-  // Surface the load failure interactively too (console.warn covers all modes,
-  // including print/RPC where session_start may not fire).
+  // Surface local setup failure interactively too (console.warn covers all
+  // modes, including print/RPC where session_start may not fire). Remote/auth
+  // failures happen only during explicit refresh/status operations.
   if (loadError) {
     pi.on("session_start", (_event, ctx) => {
       ctx.ui.notify(`PrivateMode AI unavailable: ${loadError}`, "warning");
@@ -339,15 +411,15 @@ export default async function (pi: ExtensionAPI) {
           if (!apiKey) throw new Error("PRIVATEMODE_API_KEY not set");
           await waitForProxy(pi, apiKey, baseUrl);
           activeBaseUrl = baseUrl;
+          refreshError = null;
           ctx.ui.notify(
             `PrivateMode proxy restarted and healthy at ${baseUrl}.`,
             "info"
           );
         } catch (e) {
+          refreshError = e instanceof Error ? e.message : String(e);
           ctx.ui.notify(
-            `proxy restarted but health check failed: ${
-              e instanceof Error ? e.message : e
-            }`,
+            `proxy restarted but health check failed: ${refreshError}`,
             "error"
           );
         }
@@ -370,11 +442,12 @@ export default async function (pi: ExtensionAPI) {
       let line = `proxy container: ${state}`;
       line += `\nhost port: ${hostPort ?? "(none)"}`;
       if (activeBaseUrl) line += `\nbase URL: ${activeBaseUrl}`;
+      if (refreshError) line += `\nlast refresh error: ${refreshError}`;
       if (hostPort && apiKey) {
         try {
           const m = await fetchModels(apiKey, baseUrlFor(hostPort));
           line += `\nmodels (${m.data.length}): ${m.data
-            .map((x) => x.id)
+            .map((model) => model.id)
             .join(", ")}`;
         } catch (e) {
           line += `\nprobe failed: ${e instanceof Error ? e.message : e}`;

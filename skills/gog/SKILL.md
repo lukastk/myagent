@@ -98,7 +98,7 @@ create-gdoc Deck -u jack -t slides -s private --json              # {id,name,typ
 - `-t/--type` is `doc`, `sheet` or `slides`; `-s/--share` is `private`, `viewer`, `commenter` or `editor` (the last three grant anyone with the link that role, link-only).
 - Other flags: `--folder <id>` to create outside Share, `--from <file.md>` (doc only), `--no-date`, `--open`/`--no-open` (macOS opens the file by default), `--json`, `--dry-run`, `--help`.
 - **Agents must pass `-u`, `-t` and `-s` explicitly.** The fzf pickers only run when stdin is a terminal; without one `-u` is required and the defaults are `doc` and `private`. Use a sharing level other than `private` only when Lukas has explicitly asked for the file to be shared.
-- Created files are named `YYYY-MM-DD <name>` (a space after the date), which is the form Lukas chose for files created this way; uploads keep the `YYYY-MM-DD_` form described in the next section.
+- Created files are named `YYYY-MM-DD <name>`, the same date-and-space convention as uploads into Share (next section).
 
 Raw gog equivalents, for a different folder or no date prefix:
 
@@ -121,10 +121,11 @@ When Lukas asks to **upload a file to Drive** for one of his accounts and does
   (`--parent <newSubfolderId>`).
 
 **Naming convention (Share folder only):** unless Lukas gives a name, prepend the
-uploaded file's / subfolder's name with `YYYY-MM-DD_` of the current date — e.g.
-`2026-07-09_report.pdf`, or a subfolder `2026-07-09_screenshots/`. Use
-`--name` on `drive upload` to set it. This date-prefix convention applies **only**
-to things going into the Share folder, not to uploads elsewhere.
+uploaded file's / subfolder's name with the current date and a space,
+`YYYY-MM-DD ` — e.g. `2026-07-09 report.pdf`, or a subfolder
+`2026-07-09 screenshots/`. Use `--name` on `drive upload` to set it (quote the
+name because of the space). This date-prefix convention applies **only** to
+things going into the Share folder, not to uploads elsewhere.
 
 **"Share" is only the folder's name — it does NOT mean make the file public.**
 Do not touch the file's sharing or permissions. Placing a file in Share does not
@@ -155,10 +156,10 @@ a `resourceKey`, but the plain folder ID above works for owner uploads via `gog`
 ```bash
 # Single file → Share folder, date-prefixed
 gog --account kikuchi.lukas@gmail.com drive upload ./report.pdf \
-  --parent 1R3KtS1kAgt3_6Eo5Y5G9xC7FAAoXnKc8 --name 2026-07-09_report.pdf
+  --parent 1R3KtS1kAgt3_6Eo5Y5G9xC7FAAoXnKc8 --name "2026-07-09 report.pdf"
 
 # Several files → dated subfolder inside Share (mkdir returns the new folder's id)
-sub=$(gog --account kikuchi.lukas@gmail.com drive mkdir 2026-07-09_exports \
+sub=$(gog --account kikuchi.lukas@gmail.com drive mkdir "2026-07-09 exports" \
   --parent 1R3KtS1kAgt3_6Eo5Y5G9xC7FAAoXnKc8 --json | jq -r .id)
 gog --account kikuchi.lukas@gmail.com drive upload ./a.csv --parent "$sub"
 gog --account kikuchi.lukas@gmail.com drive upload ./b.csv --parent "$sub"

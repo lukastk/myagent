@@ -133,7 +133,28 @@ grant anyone-with-link or public access, and you must not add any. Leave
 permissions exactly as Drive sets them by default, unless Lukas explicitly asks
 to share the file.
 
-The IDs below were re-verified on 2026-10-28 with the query that finds the
+Use the myrig command `share-gdrive` (`home/.mybin/share-gdrive` in myrig, on
+PATH on every machine) for these uploads rather than hand-rolling
+`drive upload`: it finds the account's Share folder by name, applies the naming
+convention, walks folders (subfolders included; hidden entries such as `.git`
+and `.DS_Store` are skipped unless `--hidden`), and leaves the upload private
+unless told otherwise.
+
+```bash
+share-gdrive ./report.pdf -u kikuchi.lukas -s private             # → "2026-10-29 report.pdf" in Share
+share-gdrive ./exports -u kikuchi.lukas -s private                # folder → "2026-10-29 exports/" with its contents
+share-gdrive a.csv b.csv --name exports -u kikuchi.lukas -s private   # several paths → "2026-10-29 exports/"
+share-gdrive notes.md -u jack --convert -s private                # Markdown → Google Doc "2026-10-29 notes"
+url=$(share-gdrive ./deck.pdf -u jack -s private --no-open)       # summary on stderr, URL on stdout
+share-gdrive ./deck.pdf -u jack -s private --json                 # {kind,id,name,url,account,folder,share,permission,files,folders,skipped_hidden}
+```
+
+- `-u/--user` takes an email or a unique part of one; `-s/--share` is `private`, `viewer`, `commenter` or `editor`, the same as `create-gdoc`.
+- Other flags: `--name <name>` (replaces the file's or folder's name, or names the folder holding several paths), `--folder <id>` to upload outside Share, `--hidden`, `--convert`/`--convert-to doc|sheet|slides` (every file; gog rejects extensions it cannot convert), `--no-date`, `--open`/`--no-open` (macOS opens the upload by default), `--json`, `--dry-run`, `--help`.
+- **Agents must pass `-u` and `-s private`.** The fzf pickers only run when stdin is a terminal; without one `-u` is required and sharing defaults to private. Use another level only when Lukas has explicitly asked for the upload to be shared.
+- A symlink to a directory inside a folder is an error (nothing is uploaded); two paths with the same name are refused.
+
+Raw gog equivalents, for a different folder or no date prefix, follow. The IDs below were re-verified on 2026-10-28 with the query that finds the
 folder by name, which is also what `create-gdoc` runs at run time:
 
 ```bash
@@ -154,13 +175,13 @@ a `resourceKey`, but the plain folder ID above works for owner uploads via `gog`
 — no resourceKey needed.)
 
 ```bash
-# Single file → Share folder, date-prefixed
+# Single file → Share folder, date-prefixed (what share-gdrive does)
 gog --account kikuchi.lukas@gmail.com drive upload ./report.pdf \
-  --parent 1R3KtS1kAgt3_6Eo5Y5G9xC7FAAoXnKc8 --name "2026-07-09 report.pdf"
+  --parent 1R3KtS1kAgt3_6Eo5Y5G9xC7FAAoXnKc8 --name "2026-07-09 report.pdf"   # result: file.id / file.webViewLink
 
 # Several files → dated subfolder inside Share (mkdir returns the new folder's id)
 sub=$(gog --account kikuchi.lukas@gmail.com drive mkdir "2026-07-09 exports" \
-  --parent 1R3KtS1kAgt3_6Eo5Y5G9xC7FAAoXnKc8 --json | jq -r .id)
+  --parent 1R3KtS1kAgt3_6Eo5Y5G9xC7FAAoXnKc8 --json | jq -r .folder.id)
 gog --account kikuchi.lukas@gmail.com drive upload ./a.csv --parent "$sub"
 gog --account kikuchi.lukas@gmail.com drive upload ./b.csv --parent "$sub"
 ```

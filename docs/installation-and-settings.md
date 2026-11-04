@@ -79,6 +79,35 @@ Codex CLI, the Codex IDE extension, and the Codex desktop app share
 `~/.codex/config.toml`. Restart Codex clients after install. Codex does not read
 myagent's JSON MCP config on its own; this installer is the explicit bridge.
 
+## mypi
+
+mypi is a patched fork of Pi that Sesh runs as a second harness beside `pi`
+(`sesh thread new --agent mypi`). Its repository is `~/mysetup/mypi` and myrig installs
+it through the `mypi` target; see `docs/reference/mypi.md` in myrig. `install.sh` here
+has no mypi step and never writes to `~/.mypi`. mypi uses `MYPI_CODING_AGENT_DIR`
+(`~/.mypi/agent`) rather than `PI_CODING_AGENT_DIR`.
+
+**Shared live.** Most of `~/.mypi/agent` is symlinks into `~/.pi/agent`, so these reach
+mypi as soon as this repo's installer has run: local extensions, skills, `AGENTS.md`,
+`mcp.json`, `models.json`, `hooks.json` and `auth.json`. Sessions are shared too. An
+invalid extension stops mypi from starting rather than being skipped, so a broken
+extension here affects both harnesses.
+
+**Copied at mypi install time.** `~/.mypi/agent/settings.json` is mypi's own file. Its
+installer derives `packages` and `extensions` from `~/.pi/agent/settings.json`, so an
+entry added to `external_extensions.txt` reaches mypi only after `mypi-install.py` runs
+again on that machine, for example through a full myrig install. New top-level entries
+in `~/.pi/agent` are linked at the same point.
+
+**Not shared.**
+
+- `pi-rpc-socket` is removed from mypi's packages and replaced by a frozen local copy
+  shipped with each mypi release, so updating the extension here does not change mypi.
+- The other `pi_settings.json` keys are not copied: `defaultModel`, `defaultProvider`,
+  `defaultThinkingLevel`, `enabledModels`, `defaultTools` (including `+codemode`),
+  `defaultProjectTrust`, `tuiMode` and `fullscreenExitOutput`. The fullscreen and
+  codemode invariants in this repo's guide describe `pi`, not mypi.
+
 ## Pi settings
 
 `pi_settings.json` holds our declarative Pi settings (default provider/model,

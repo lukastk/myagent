@@ -3,6 +3,10 @@
 Personal coding-agent extensions, skills, MCP servers, and configuration for
 [Pi](https://github.com/badlogic/pi-mono), Claude Code, and Codex.
 
+mypi, the patched Pi fork that Sesh runs as a second harness, picks up this repo's
+extensions and skills through Pi's agent directory. See
+[mypi](docs/installation-and-settings.md#mypi).
+
 ## Setup
 
 ```bash

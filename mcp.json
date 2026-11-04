@@ -38,6 +38,12 @@
       "lifecycle": "lazy",
       "directTools": "search",
       "interactiveAuth": true
+    },
+    "soliton": {
+      "command": "/home/lukastk/.local/share/mise/installs/node/24/bin/node",
+      "args": ["/home/lukastk/soliton/app/soliton-agent/dist/mcp.js"],
+      "disabled": true,
+      "machines": ["mymain"]
     }
   }
 }

@@ -78,12 +78,27 @@ config_path, desired_path = sys.argv[1:]
 with open(config_path, encoding="utf-8") as config_file:
     data = json.load(config_file)
 
+def scoped_out(name, cfg):
+    # `machines` limits an entry to the listed $MYRIG_MACHINE names; absent means
+    # every machine. Pi reads mcp.json through symlinks and does not filter.
+    machines = cfg.get("machines")
+    if machines is None:
+        return False
+    if not isinstance(machines, list) or not all(isinstance(m, str) for m in machines):
+        raise SystemExit(f"MCP server {name!r} machines must be a list of strings")
+    machine = os.environ.get("MYRIG_MACHINE")
+    if not machine:
+        raise SystemExit(f"MCP server {name!r} is machine-scoped but MYRIG_MACHINE is unset")
+    return machine not in machines
+
 operations = []
 for name, cfg in (data.get("mcpServers") or {}).items():
     if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
         raise SystemExit(f"Invalid Codex MCP server name: {name!r}")
     if not isinstance(cfg, dict):
         raise SystemExit(f"MCP server {name!r} must be an object")
+    if scoped_out(name, cfg):
+        continue
 
     add_argv = ["codex", "mcp", "add", name]
     url = cfg.get("url")

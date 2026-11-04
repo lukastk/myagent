@@ -27,7 +27,7 @@ def main():
     report = {
         "method": "UTF-8 bytes and characters/4; not provider token accounting",
         "shared_rules": {"path": str(core), **measure(core)},
-        "mcp_exposure": {name: {"directTools": cfg["directTools"], "lifecycle": cfg["lifecycle"]}
+        "mcp_exposure": {name: {"directTools": cfg.get("directTools"), "lifecycle": cfg.get("lifecycle"), "machines": cfg.get("machines")}
                          for name, cfg in mcp["mcpServers"].items()},
         "project_context_files_not_global": sorted(
             [{"path": str(p), **measure(p)} for p in repo.parent.glob("*/AGENTS*.md")],

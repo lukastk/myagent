@@ -136,4 +136,32 @@ fi
 grep -Fq $'mcp\tadd\tplaywright-main' "$capture" \
     || fail "skipping wispr-flow also skipped the ordinary servers"
 
+# soliton is scoped to mymain: installed there with its exact argv, skipped and
+# pruned elsewhere, and a scoped entry without MYRIG_MACHINE is a hard error.
+: > "$capture"
+CODEX_INSTALL_TEST_CAPTURE="$capture" HOME="$tmp_dir/home" \
+    PATH="$test_path" MYRIG_MACHINE=mymain \
+    bash "$tmp_dir/repo/scripts/install-codex.sh" >/dev/null
+grep -Fq $'mcp\tadd\tsoliton\t--\t/home/lukastk/.local/share/mise/installs/node/24/bin/node\t/home/lukastk/soliton/app/soliton-agent/dist/mcp.js' "$capture" \
+    || fail "mymain did not get the soliton server"
+grep -Fxq soliton "$state" || fail "Codex state is missing soliton on mymain"
+
+: > "$capture"
+CODEX_INSTALL_TEST_CAPTURE="$capture" HOME="$tmp_dir/home" \
+    PATH="$test_path" MYRIG_MACHINE=macbook \
+    bash "$tmp_dir/repo/scripts/install-codex.sh" --prune >/dev/null
+if grep -Fq $'mcp\tadd\tsoliton' "$capture"; then
+    fail "a machine outside soliton's machines list got the server"
+fi
+grep -Fq $'mcp\tremove\tsoliton' "$capture" \
+    || fail "prune did not remove soliton from a machine outside its list"
+grep -Fq $'mcp\tadd\tplaywright-main' "$capture" \
+    || fail "scoping soliton out also skipped the ordinary servers"
+
+if CODEX_INSTALL_TEST_CAPTURE="$capture" HOME="$tmp_dir/home" \
+    PATH="$test_path" \
+    env -u MYRIG_MACHINE bash "$tmp_dir/repo/scripts/install-codex.sh" >/dev/null 2>&1; then
+    fail "a machine-scoped entry with MYRIG_MACHINE unset did not fail"
+fi
+
 echo "PASS: Codex MCP installer checks"

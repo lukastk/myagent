@@ -64,7 +64,7 @@ After running install, reload Pi with `/reload` if it's running.
 **`scripts/install-claude.sh`** — Claude Code side:
 1. Symlinks each folder under `skills/` into `~/.claude/skills/` so Claude discovers local skills.
 2. Symlinks each external skill (resolved via `~/.agents/skills/<name>`) into `~/.claude/skills/`.
-3. For every server in `mcp.json`, runs `claude mcp remove <name> -s user` then `claude mcp add-json <name> ... -s user` (idempotent re-apply at user scope). Servers with a `cwd` field are wrapped as `sh -c "cd <cwd> && exec ..."` because `claude mcp add-json` silently drops `cwd`. `lifecycle` is Pi-specific and stripped.
+3. For every server in `mcp.json`, runs `claude mcp remove <name> -s user` then `claude mcp add-json <name> ... -s user` (idempotent re-apply at user scope). Servers with a `cwd` field are wrapped as `sh -c "cd <cwd> && exec ..."` because `claude mcp add-json` silently drops `cwd`. `lifecycle` is Pi-specific and stripped. An entry with `"machines": [...]` is installed only where `$MYRIG_MACHINE` is listed (an unset `MYRIG_MACHINE` is an error when any entry is scoped); with `--prune`, a scoped-out entry it installed earlier is removed.
 4. With `--prune`, removes Claude skill symlinks and MCP servers it previously installed but are no longer listed.
 
 Restart Claude Code to pick up new skills/MCP servers.
@@ -73,6 +73,7 @@ Restart Claude Code to pick up new skills/MCP servers.
 1. Reads every server from `mcp.json` and validates the full set before changing Codex config.
 2. Re-applies stdio servers with `codex mcp remove/add`; like Claude, entries with `cwd` are safely wrapped in `sh -c "cd … && exec …"` because the installed `codex mcp add` command has no `cwd` flag.
 3. Applies simple streamable-HTTP entries by URL and fails loudly rather than dropping unsupported static headers.
+   Entries whose `machines` list does not include `$MYRIG_MACHINE` are skipped, as in the Claude installer.
 4. Records the server names it manages in `.install-state/codex_mcp.txt`; with `--prune`, removes previously managed names no longer declared.
 
 Codex CLI, the Codex IDE extension, and the Codex desktop app share

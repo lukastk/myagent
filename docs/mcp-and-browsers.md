@@ -8,7 +8,7 @@ about every currently installed runtime. Read only for the relevant task.
 
 For current exposure policy and tests, see [agent context](agent-context.md)
 and [native codemode / adapter ownership](pi-mcp-codemode.md).
-All servers in `mcp.json` use `directTools: "search"`; connection lifecycle is
+All enabled servers in `mcp.json` use `directTools: "search"`; connection lifecycle is
 independent of schema exposure. The incident measurements below predate that
 2026-10-07 change; they motivate keeping the gates, isolation and lazy shim.
 
@@ -250,6 +250,14 @@ Edit `mcp.json` and add an entry under `mcpServers`:
 Add `"interactiveAuth": true` for a server whose authorization is an interactive
 browser flow, so the Codex installer neither re-registers it nor fails the
 install over an OAuth timeout — see the Wispr Flow section above.
+
+Add `"machines": ["mymain"]` to install a server only on the listed machines
+(matched against `$MYRIG_MACHINE`). The Claude and Codex installers skip the
+entry elsewhere, and their `--prune` removes it where they installed it before.
+Pi reads `mcp.json` through symlinks and sees every entry, so give a scoped
+server `"disabled": true` if Pi must not start it. The `soliton` entry works this
+way: its server exists only on mymain, and sesh's Soliton extension, not the
+Pi adapter, launches it from the entry's `command` and `args`.
 
 Then run `./install.sh` and `/reload` in Pi.
 

@@ -209,7 +209,22 @@ import json, os, shlex, sys
 with open(sys.argv[1]) as f:
     data = json.load(f)
 
+def scoped_out(name, cfg):
+    # `machines` limits an entry to the listed $MYRIG_MACHINE names; absent means
+    # every machine. Pi reads mcp.json through symlinks and does not filter.
+    machines = cfg.get("machines")
+    if machines is None:
+        return False
+    if not isinstance(machines, list) or not all(isinstance(m, str) for m in machines):
+        raise SystemExit(f"MCP server {name!r} machines must be a list of strings")
+    machine = os.environ.get("MYRIG_MACHINE")
+    if not machine:
+        raise SystemExit(f"MCP server {name!r} is machine-scoped but MYRIG_MACHINE is unset")
+    return machine not in machines
+
 for name, cfg in (data.get("mcpServers") or {}).items():
+    if scoped_out(name, cfg):
+        continue
     # Remote servers are defined by a `url` (no `command`). Claude Code speaks
     # HTTP/SSE natively, so emit its url-based server JSON and let Claude handle
     # the OAuth flow at connect time (via /mcp). `transport` defaults to http.

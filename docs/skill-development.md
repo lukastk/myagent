@@ -25,7 +25,15 @@ description: What this skill does and when to use it.
 
 - `name` must be lowercase letters/numbers/hyphens and match the folder name.
 - `description` should be specific so the agent knows when to load the skill.
-- Add `disable-model-invocation: true` for manual or creative workflows the model rarely needs to auto-discover (7 local skills carry it, e.g. `deslop`, `html-slides`, `multipart-vault-doc`). It keeps the skill's name and description out of every turn's prompt in both Pi and Claude Code, while `/skill:name` (Pi) and `/name` (Claude Code) still invoke it. Leave it off skills that agents are told to use on their own (`gog`, `myvault`, `sesh-cli`, …).
+- For a skill that must be **user-invoked only in every harness**:
+  1. Add `disable-model-invocation: true` to `SKILL.md`. Pi and Claude Code then omit the
+     skill from model discovery while keeping `/skill:name` (Pi) and `/name` (Claude Code).
+  2. Add `agents/openai.yaml` with `policy.allow_implicit_invocation: false`. Codex then permits
+     explicit `$skill-name` invocation but cannot select the skill implicitly.
+- Leave these controls off skills that agents are told to use on their own (`gog`, `myvault`,
+  `sesh-cli`, …). Manual/creative workflows such as `deslop`, `html-slides`, and
+  `multipart-vault-doc` already use the Pi/Claude frontmatter control; add the Codex policy when
+  they also need to be strictly user-only there.
 
 ### 3. Add instructions/scripts
 

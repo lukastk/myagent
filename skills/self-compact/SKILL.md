@@ -1,6 +1,7 @@
 ---
 name: self-compact
-description: Self-compact your own context as a sesh-managed agent — write a handover prompt to a tmp file, then fire ONE detached shell command that sends /compact to your own thread followed by the handover. Use when your context window is filling up mid-task (auto-compact looming), when the user says "self-compact" / "compactify yourself" / "compact and continue", or before starting a large new phase of work with a bloated context.
+description: User-invoked context compaction for a sesh-managed agent — write a handover prompt to a tmp file, then fire one detached command that compacts the current thread and sends the handover. Run only when the user explicitly invokes this skill; never initiate it autonomously based on context size or task phase.
+disable-model-invocation: true
 ---
 
 # self-compact
@@ -19,8 +20,12 @@ message in your fresh, compacted context.
 
 ## When to use / not use
 
-- **Use** when context is genuinely filling up (auto-compact warning visible, or you're
-  deep into a long task and about to start another big phase).
+This is a **manual-only skill**. Run it only after the user explicitly invokes it. Never
+decide to self-compact merely because context is large, an automatic compaction warning appears,
+or a new phase is beginning.
+
+- **Use** after explicit user invocation when context is genuinely filling up (auto-compact
+  warning visible, or you're deep into a long task and about to start another big phase).
 - **Don't use** on a small session — claude refuses with "not enough messages", pi with
   `Nothing to compact (session too small)` (it keeps the most recent ~20k tokens, so
   anything smaller is uncompactable). If you're small enough to hit these, you didn't

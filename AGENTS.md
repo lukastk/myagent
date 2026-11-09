@@ -56,9 +56,11 @@ task-relevant references below, not the whole documentation set.
 
 ## Mandatory invariants and traps
 
-- Never hand-create folders/worktrees in `~/dev`: use `boxyard` via
-  `boxyard-cli`, or put scratch/worktrees outside it. For machine operations
-  use `mysetup-navigator` and canonical `ssh-target <machine>`.
+- Boxyard owns the top level of `~/dev`: never create a folder there manually.
+  All creation at that level must go through `boxyard-cli`. Directories inside an
+  existing box are normal project content. Put non-box scratch/worktrees outside
+  `~/dev`. For machine operations use `mysetup-navigator` and canonical
+  `ssh-target <machine>`.
 - Agent shell calls use zsh: use argv arrays, not bash-style word splitting.
   Never interpolate external strings into code parsed by `sh -c`, eval or
   similar; pass separate argv. Installer cwd wrappers must remain safe.

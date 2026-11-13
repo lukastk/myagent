@@ -23,10 +23,11 @@ task-relevant references below, not the whole documentation set.
 - `install.sh`: orchestrates `scripts/install-pi.sh`,
   `scripts/install-claude.sh`, then `scripts/install-codex.sh`.
   `scripts/` also holds targeted tests; `_dev/experiments/` holds R&D.
-- **mypi** (the patched Pi fork, a second Sesh harness) is not an install
-  target here. It shares `~/.pi/agent` through symlinks and takes only
-  `packages` and `extensions` from Pi's settings, as a copy made when it is
-  installed: see [mypi](docs/installation-and-settings.md#mypi).
+- **mypi** (the patched Pi fork, a second Sesh harness) is not a runtime install
+  target here. Its own installer transforms Pi's live settings for the frozen socket,
+  while `install-pi.sh` applies `pi_settings.json` as the shared defaults overlay to
+  both installed harnesses. Never maintain separate Pi/mypi defaults: see
+  [mypi](docs/installation-and-settings.md#mypi).
 - `docs/`: on-demand guides. `CLAUDE.md` imports only this core and
   `AGENTS.local.md`; the agents-local extension loads local memory into Pi.
   Keep that memory private/uncommitted, concise and historically qualified.

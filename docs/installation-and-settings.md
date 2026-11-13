@@ -84,9 +84,8 @@ myagent's JSON MCP config on its own; this installer is the explicit bridge.
 
 mypi is a patched fork of Pi that Sesh runs as a second harness beside `pi`
 (`sesh thread new --agent mypi`). Its repository is `~/mysetup/mypi` and myrig installs
-it through the `mypi` target; see `docs/reference/mypi.md` in myrig. `install.sh` here
-has no mypi step and never writes to `~/.mypi`. mypi uses `MYPI_CODING_AGENT_DIR`
-(`~/.mypi/agent`) rather than `PI_CODING_AGENT_DIR`.
+it through the `mypi` target; see `docs/reference/mypi.md` in myrig. mypi uses
+`MYPI_CODING_AGENT_DIR` (`~/.mypi/agent`) rather than `PI_CODING_AGENT_DIR`.
 
 **Shared live.** Most of `~/.mypi/agent` is symlinks into `~/.pi/agent`, so these reach
 mypi as soon as this repo's installer has run: local extensions, skills, `AGENTS.md`,
@@ -94,35 +93,37 @@ mypi as soon as this repo's installer has run: local extensions, skills, `AGENTS
 invalid extension stops mypi from starting rather than being skipped, so a broken
 extension here affects both harnesses.
 
-**Copied at mypi install time.** `~/.mypi/agent/settings.json` is mypi's own file. Its
-installer derives `packages` and `extensions` from `~/.pi/agent/settings.json`, so an
-entry added to `external_extensions.txt` reaches mypi only after `mypi-install.py` runs
-again on that machine, for example through a full myrig install. New top-level entries
-in `~/.pi/agent` are linked at the same point.
+**One defaults source, separate mutable files.** `pi_settings.json` is the declarative
+defaults overlay for both Pi and mypi. `install-pi.sh` always applies it to
+`~/.pi/agent/settings.json`; when `~/.mypi/agent` exists, it applies the same overlay to
+mypi's separate `settings.json` in the same run. This includes the provider/model,
+thinking level, model scope, tools, project trust, terminal mode and machine-specific
+`shellPath`. Do not maintain a second mypi defaults list.
 
-**Not shared.**
+The separate file is necessary because both runtimes mutate settings and mypi's package
+list differs. On initial install or upgrade, `mypi-install.py` derives ordinary user
+settings from Pi's live file, removes Pi's `pi-rpc-socket`, inserts the frozen mypi copy,
+and preserves the MCP override. Changelog versions, tracking/device IDs, `sessionDir`
+and `selfUpdateCommand` remain harness-local. New top-level entries in `~/.pi/agent` are
+linked when `mypi-install.py` runs again.
 
-- `pi-rpc-socket` is removed from mypi's packages and replaced by a frozen local copy
-  shipped with each mypi release, so updating the extension here does not change mypi.
-- The other `pi_settings.json` keys are not copied: `defaultModel`, `defaultProvider`,
-  `defaultThinkingLevel`, `enabledModels`, `defaultTools` (including `+codemode`),
-  `defaultProjectTrust`, `tuiMode` and `fullscreenExitOutput`. The fullscreen and
-  codemode invariants in this repo's guide describe `pi`, not mypi.
+`pi-rpc-socket` remains the intentional exception to live sharing: mypi uses the frozen
+copy shipped with its selected release, so updating the ordinary Pi extension does not
+change an already-installed mypi runtime.
 
 ## Pi settings
 
-`pi_settings.json` holds our declarative Pi settings (default provider/model,
-thinking level, project trust, TUI mode, and `enabledModels`, which is also the
-scope session-model cycles through). `install-pi.sh`
-**shallow-merges** it onto the live `~/.pi/agent/settings.json` with
-`jq -s '.[0] * .[1]'` (existing `*` ours): our declared keys overwrite, but any
-key we don't declare is left untouched.
+`pi_settings.json` holds the declarative defaults shared by Pi and mypi (provider/model,
+thinking level, project trust, TUI mode, tools, and `enabledModels`, which is also the
+scope session-model cycles through). `install-pi.sh` **shallow-merges** it onto the live
+Pi settings and, when mypi is installed, onto mypi's separate settings file with
+`jq -s '.[0] * .[1]'` (existing `*` ours): declared keys overwrite, but keys not in the
+overlay are left untouched.
 
-Why merge instead of symlink or copy: Pi *mutates* `settings.json` at runtime —
-it owns `packages` (the installed-extension list), `lastChangelogVersion`, and
-similar. A symlink would push that runtime churn back into this repo on every
-launch; a wholesale copy would wipe it. The overlay keeps this file a clean,
-minimal statement of desired settings while letting Pi manage its own state.
+Why merge instead of symlink or copy: both harnesses *mutate* their `settings.json` at
+runtime. Pi owns its installed `packages`; mypi owns a transformed package list with a
+frozen socket; each owns changelog and similar runtime state. The shared overlay keeps
+defaults declarative while preserving those differences.
 
 **`defaultTools: ["+codemode"]`** enables Pi's built-in JavaScript tool
 orchestration (Pi >= 0.99.0) without replacing the existing tool selection.
@@ -136,16 +137,14 @@ The tested host is Pi 0.99.1; re-run the integration tests on future upgrades.
 Native MCP 0.99.1 itself still connects enabled servers at startup and ignores
 `lifecycle`/`directTools`.
 
-**`tuiMode: "fullscreen"`** is declared here so the wheel scrolls Pi's transcript
-inside tmux. It is the ONLY reason the setting is set. Pi's `regular` mode renders
-inline on the normal screen and never asks the terminal for mouse tracking, so
-inside mycockpit tmux keeps the wheel for itself and you land in copy-mode;
-`fullscreen` takes the alternate screen and enables SGR mouse tracking
-(`?1002h`+`?1006h`), which is exactly what Claude Code does and why Claude Code
-alone used to scroll properly there. Verified 2026-08-23 by injecting real SGR
-wheel events into a tmux client: the transcript scrolled in place and tmux did not
-enter copy-mode. myrig's `AGENTS.md` carries the full cross-agent picture and the
-matching tmux-side bindings for codex.
+**`tuiMode: "fullscreen"`** is declared here so the wheel scrolls the transcript inside
+tmux in both Pi harnesses. Pi's `regular` mode renders inline on the normal screen and
+never asks the terminal for mouse tracking, so inside mycockpit tmux keeps the wheel for
+itself and you land in copy-mode; `fullscreen` takes the alternate screen and enables
+SGR mouse tracking (`?1002h`+`?1006h`). Verified 2026-08-23 by injecting real SGR wheel
+events into a tmux client: the transcript scrolled in place and tmux did not enter
+copy-mode. myrig's `AGENTS.md` carries the full cross-agent picture and the matching
+tmux-side bindings for Codex.
 
 Two costs, both accepted deliberately. Pi upstream still labels fullscreen
 **experimental** (its `/settings` → "TUI mode" entry says so), and while it runs
@@ -168,15 +167,11 @@ removed; myagent is now the sole owner.) To add a package, edit
 so it now also evicts any orphan re-seeded by old tooling (the `pi-slopchop` case
 above), not just entries myagent installed itself.
 
-**`shellPath`** is *injected by install-pi.sh*, not stored in `pi_settings.json`,
-because the correct path is machine-specific (`/bin/zsh` on mac, a
-`/data/data/com.termux/...` path on termux). Pi does **not** auto-detect zsh —
-with no `shellPath` its `getShellConfig()` goes straight to `/bin/bash`
-(`dist/utils/shell.js`), which is the bug this setting exists to fix. So the
-installer resolves the real zsh via `command -v zsh` and sets it, but only when
-zsh exists and the live settings don't already pin a `shellPath` (so a
-deliberate user choice is never overridden, and a zsh-less box is left to Pi's
-own `/bin/bash` fallback rather than getting a broken path).
+**`shellPath`** is *injected by install-pi.sh*, not stored in `pi_settings.json`, because
+the correct path is machine-specific (`/bin/zsh` on mac, a Termux path on Android). The
+installer keeps Pi's deliberate existing value or resolves zsh with `command -v`, then
+puts that effective path into the shared overlay applied to both Pi and mypi. A zsh-less
+box is left to the harness default rather than receiving a broken path.
 
 ### Custom models (`models.json`)
 

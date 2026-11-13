@@ -10,6 +10,7 @@ SKILLS_DIR="$HOME/.agents/skills"
 SKILLS_LIST="$REPO_ROOT/external_skills.txt"
 PI_SETTINGS_SRC="$REPO_ROOT/pi_settings.json"
 PI_SETTINGS_DEST="$HOME/.pi/agent/settings.json"
+MYPI_SETTINGS_DEST="$HOME/.mypi/agent/settings.json"
 MCP_CONFIG="$REPO_ROOT/mcp.json"
 MCP_DEST_DIR="$HOME/.config/mcp"
 MCP_DEST="$MCP_DEST_DIR/mcp.json"
@@ -299,25 +300,16 @@ fi
 echo ""
 echo "==> Merging Pi settings"
 
-# pi_settings.json holds our declarative Pi settings (default model/provider,
-# enabled models, model-scope list). It is SHALLOW-MERGED on top of the live
-# ~/.pi/agent/settings.json: our keys overwrite, but any keys we don't declare
-# are preserved. This matters because Pi mutates settings.json at runtime —
-# `packages` (the installed-extension list, owned here by external_extensions.txt
-# via `pi install`), `lastChangelogVersion`, etc. A symlink or wholesale copy
-# would clobber that runtime state, so we deliberately overlay instead.
+# pi_settings.json holds the shared declarative defaults for both Pi harnesses.
+# It is shallow-merged onto Pi's live settings and, when mypi is installed, onto
+# its separate settings file too. Our keys overwrite while runtime-owned keys
+# such as packages and changelog versions survive. This gives Pi and mypi one
+# defaults source without symlinking a file that both runtimes mutate.
 #
 # We intentionally do NOT declare `packages` in pi_settings.json:
-# external_extensions.txt is the single source of truth (installed by the
-# `pi install` loop below). Declaring it here too would recreate a split-brain.
-#
-# `shellPath` IS injected, but computed here rather than stored statically,
-# because the correct path is machine-specific (/bin/zsh on mac, a termux path,
-# etc.). Pi does NOT auto-detect zsh: with no shellPath its getShellConfig()
-# goes straight to /bin/bash (see dist/utils/shell.js) — which is the original
-# bug this setting fixes. So we resolve the real zsh via `command -v zsh` and
-# set it, but only when zsh exists and the live settings don't already pin a
-# shellPath (never override a deliberate user choice; never set a bad path).
+# external_extensions.txt owns Pi's package list, while mypi replaces
+# pi-rpc-socket with its frozen copy. `shellPath` is injected here rather than
+# stored statically because the correct zsh path is machine-specific.
 if [ -f "$PI_SETTINGS_SRC" ]; then
     if ! command -v jq >/dev/null 2>&1; then
         echo "    jq is required to merge Pi settings."
@@ -335,6 +327,9 @@ if [ -f "$PI_SETTINGS_SRC" ]; then
         existing_shell="$(jq -r '.shellPath // empty' "$PI_SETTINGS_DEST" 2>/dev/null || true)"
     fi
     if [ -n "$existing_shell" ]; then
+        new_tmp_file tmp_overlay2
+        jq --arg sh "$existing_shell" '. + {shellPath: $sh}' "$tmp_overlay" > "$tmp_overlay2"
+        mv "$tmp_overlay2" "$tmp_overlay"
         echo "    shellPath (keeping existing: $existing_shell)"
     elif zsh_path="$(command -v zsh)" && [ -n "$zsh_path" ]; then
         new_tmp_file tmp_overlay2
@@ -355,6 +350,23 @@ if [ -f "$PI_SETTINGS_SRC" ]; then
         echo "    settings.json (created)"
     fi
     mv "$tmp_merged_settings" "$PI_SETTINGS_DEST"
+
+    # mypi keeps a separate settings file because its packages and runtime state differ,
+    # but its declarative defaults must never be maintained separately. Only touch it
+    # when mypi is already installed; machines without mypi must not gain a partial tree.
+    if [ -d "$(dirname "$MYPI_SETTINGS_DEST")" ]; then
+        new_tmp_file tmp_mypi_merged_settings
+        if [ -f "$MYPI_SETTINGS_DEST" ]; then
+            jq -s '.[0] * .[1]' "$MYPI_SETTINGS_DEST" "$tmp_overlay" > "$tmp_mypi_merged_settings"
+            echo "    mypi settings.json (merged shared defaults onto existing)"
+        else
+            cp "$tmp_overlay" "$tmp_mypi_merged_settings"
+            echo "    mypi settings.json (created with shared defaults)"
+        fi
+        mv "$tmp_mypi_merged_settings" "$MYPI_SETTINGS_DEST"
+    else
+        echo "    mypi settings.json (mypi not installed — skipping)"
+    fi
 else
     echo "    No pi_settings.json found, skipping."
 fi

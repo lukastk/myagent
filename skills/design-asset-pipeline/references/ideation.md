@@ -5,8 +5,9 @@
 1. **Write a brief, not a wireframe-fill.** Feed gpt-image-2 a paragraph about what the thing
    IS (the product, the feeling, the constraints) plus reference images, rather than asking it
    to colour in a wireframe. You get assets with a visual identity, not a filled box.
-2. **Generate raster concepts** with `gen.py` (OpenAI image API, `MY_OPENAI_API_KEY` in env — the
-   canonical `OPENAI_API_KEY` is deliberately unset on these machines):
+2. **Generate raster concepts** with `gen.py` (OpenAI image API, key `MY_OPENAI_API_KEY`, which is not in
+   the env: fetch it with `secret get MY_OPENAI_API_KEY`; the canonical `OPENAI_API_KEY` is
+   deliberately unset on these machines):
    - text-to-image for fresh concepts;
    - image-to-image / edits (multiple reference images) to iterate off a chosen concept, a
      prior generation, or the user's own sketch.

@@ -49,7 +49,7 @@ The worker's final assistant message is the handoff. Pull it from the transcript
 by the thread's `agent_session_id`):
 
 ```bash
-asid=$(sesh thread info --id <id> --json | python3 -c 'import sys,json;print(json.load(sys.stdin).get("agent_session_id",""))')
+asid=$(sesh thread info --id <id> --json | python3 -c 'import sys,json;print(json.load(sys.stdin)["thread"]["agent_session_id"])')
 f=$(find ~/.claude/projects -name "$asid.jsonl" 2>/dev/null | head -1)
 python3 - "$f" <<'PY'
 import json,sys

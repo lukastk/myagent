@@ -45,8 +45,8 @@ gog --account lukas.kikuchi@gmail.com gmail drafts create --to a@b.com --subject
 ### Calendar
 
 ```bash
-gog --account lukas.kikuchi@gmail.com calendar events --today          # also --tomorrow, --all
-gog --account lukas.kikuchi@gmail.com calendar events --from 2026-05-14 --to 2026-05-21
+gog --account lukas.kikuchi@gmail.com calendar events --today          # also --tomorrow, --week, --days N
+gog --account lukas.kikuchi@gmail.com calendar events --from 2026-05-14 --to 2026-05-21   # --all: every calendar, not just primary
 gog --account lukas.kikuchi@gmail.com calendar create primary --summary "Meeting" --from "2026-05-14T10:00:00+01:00" --to "2026-05-14T10:30:00+01:00"
 gog --account lukas.kikuchi@gmail.com calendar update primary <eventId> --summary "Renamed"
 gog --account lukas.kikuchi@gmail.com calendar delete primary <eventId>
@@ -214,46 +214,15 @@ gog --account lukas.kikuchi@gmail.com drive upload ./foo.md --parent <folderId> 
 ```
 
 Conversion is **create-only** in gog. To **re-import markdown into an
-EXISTING Doc** (keeping its doc ID and sharing), go through the Drive API
-directly — `files().update(media_body=...)` on the Doc's ID. The pattern,
-reusing gog's stored refresh token (the example below shows the create
-call; swap in `svc.files().update(fileId="<docId>", media_body=media)`):
+EXISTING Doc** (keeping its doc ID, link and sharing), write it into the Doc:
 
-```python
-import io, json, subprocess, sys
-from pathlib import Path
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
-
-# Export gog's cached refresh token to a temp file
-subprocess.run(["gog", "auth", "tokens", "export", "<email>",
-                "--out", "/tmp/_t.json", "--overwrite"], check=True)
-cache = json.load(open("/tmp/_t.json"))
-# gog's config root is platform-specific — macOS: ~/Library/Application Support/gogcli/,
-# Linux: ~/.config/gogcli/. credentials.json (the OAuth client) only exists on the
-# machine where OAuth consent was first set up; copy it over if it's missing.
-gog_config = (Path.home() / "Library/Application Support/gogcli") \
-    if sys.platform == "darwin" else (Path.home() / ".config/gogcli")
-client = json.load(open(gog_config / "credentials.json"))
-creds = Credentials(
-    token=None, refresh_token=cache["refresh_token"],
-    token_uri="https://oauth2.googleapis.com/token",
-    client_id=client["client_id"], client_secret=client["client_secret"],
-    scopes=cache.get("scopes"),
-)
-creds.refresh(Request())
-svc = build("drive", "v3", credentials=creds, cache_discovery=False)
-
-media = MediaIoBaseUpload(io.BytesIO(open("foo.md","rb").read()),
-                          mimetype="text/markdown")
-f = svc.files().create(
-    body={"name": "Foo", "mimeType": "application/vnd.google-apps.document",
-          "parents": ["<folderId>"]},
-    media_body=media, fields="id,webViewLink",
-).execute()
+```bash
+gog --account … docs write <docId> --file foo.md --markdown --replace
+# --check-orphans refuses the replace if open comments' quoted text would disappear.
 ```
+
+To replace the content of an existing non-native Drive file (PDF, image, …) while
+keeping its ID, link and permissions: `gog --account … drive upload <file> --replace <fileId>`.
 
 Important gotchas the Drive markdown importer hits (whether via gog or the API):
 - Image embeds `![alt](path.png)` crash the converter (500 error).
@@ -264,7 +233,7 @@ Important gotchas the Drive markdown importer hits (whether via gog or the API):
 
 `GOG_KEYRING_PASSWORD` is set via shell init on all machines — no manual auth or password prompts needed. The CLI works in both interactive and non-interactive (SSH/script) contexts.
 
-myrig's installer keeps gog at the latest release on every OS (Homebrew `gogcli` with `latest=True` on macOS, `go install …@latest` on Linux); `gog --version` shows a machine's build (v0.47.1 everywhere on 2026-10-28). An `unknown flag` error means that machine's gog is stale, not that the flag is wrong.
+myrig's installer installs gog on every OS (Homebrew `gogcli` on macOS, `go install …@latest` on Linux), but versions drift between machines; check with `gog --version`. An `unknown flag` error usually means that machine's gog is stale, not that the flag is wrong.
 
 ## Re-authenticating
 
@@ -287,12 +256,5 @@ This opens a browser for interactive OAuth consent. After re-authorizing, run `g
 
 ## Machine targets
 
-Gog is available on all machines:
-
-| Machine | SSH |
-|---|---|
-| mac (local) | n/a |
-| mymain | `ssh lukastk@mymain` |
-| termux | `ssh -p 8022 lukas@android-main` |
-
-When running commands on remote machines, always SSH in and run the gog command directly — the tokens are already there.
+gog is on every rig machine, with tokens already in place. To run it remotely,
+`ssh-target <machine> gog …`.

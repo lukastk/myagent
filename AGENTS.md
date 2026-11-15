@@ -74,8 +74,11 @@ task-relevant references below, not the whole documentation set.
   `extensions: ["-builtin:mcp"]`; the upstream npm adapter is mutually
   exclusive. Keep native `codemode` alongside ordinary tools
   (`defaultTools: ["+codemode"]`), and `scriptMode: false`.
-- **All MCP servers use `directTools: "search"`**, including local Playwright.
-  Deferred declarations save context; `lifecycle: "lazy"` and idle disconnect
+- **Every enabled MCP server uses `directTools: "search"`**, including local
+  Playwright. A server Pi must not start (e.g. `soliton`, launched by sesh) is
+  `"disabled": true` and needs neither. `"machines": [...]` limits an entry to
+  the listed `$MYRIG_MACHINE` names (enforced by the Claude/Codex installers;
+  see `docs/mcp-and-browsers.md`). Deferred declarations save context; `lifecycle: "lazy"` and idle disconnect
   separately save processes. Keep `deferWithMissingMetadata: true`; explicitly
   connect only the needed cold server. Pi exposure is not a promise about
   Claude/Codex tool search. Do not raise Codex's instruction cap to hide bloat.

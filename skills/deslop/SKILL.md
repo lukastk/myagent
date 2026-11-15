@@ -128,4 +128,5 @@ single trigger word. End with the 2–3 highest-impact fixes.
 
 Pattern catalog grounded in [Wikipedia: Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing)
 (WikiProject AI Cleanup), distilled with practitioner sources through 2026. See `AGENTS.md` in
-this repo for how skills are installed; rerun `./install.sh` after editing.
+this repo for how skills are installed. Local skills are symlinked into `~/.agents/skills`, so
+edits take effect on reload; only a new skill needs `./install.sh`.

@@ -160,7 +160,7 @@ What is specific to a doc set:
 **Any todo item you write should be an untracked task `- [+]`, never a regular `- [ ]`.**
 Unless Lukas explicitly asks for a *tracked* task, write todos as untracked (`- [+]`) — regular
 `- [ ]` tasks flow into his real tracked task system and would overflow it. Untracked toggling:
-`- [+]` (todo) → `- [P]` (done) → `- [p]` (skipped). Full legend in `mysystem/src/task-config.ts`.
+`- [+]` (todo) → `- [P]` (done) → `- [p]` (skipped). Full legend in `~/mysetup/mysystem/mysystem/src/task-config.ts`.
 
 **Freeze publishing during an open review round.** Convos live in the *generated*
 notes, and re-running the copy script regenerates them clean — republishing mid-round silently

@@ -13,6 +13,7 @@
 # this for the still-running ids. Do NOT background it with a bare `&` — that
 # won't re-invoke you on exit.
 emulate -L zsh
+zmodload zsh/datetime  # provides $EPOCHSECONDS
 heartbeat=${1:?usage: watch.sh <heartbeat_seconds> <id> [id ...]}; shift
 ids=("$@")
 [[ ${#ids} -gt 0 ]] || { print -r -- "no thread ids given"; exit 2 }

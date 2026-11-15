@@ -8,6 +8,7 @@ lukastk/myrig@mysetup-navigator
 lukastk/appgarden@appgarden
 lukastk/mysystem@myvault
 lukastk/mysystem@convo-review
+lukastk/mysystem@task-assist
 lukastk/sesh@sesh-cli
 lukastk/sesh@do-tickets
 lukastk/mysrs@mysrs-cards

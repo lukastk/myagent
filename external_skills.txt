@@ -9,6 +9,7 @@ lukastk/appgarden@appgarden
 lukastk/mysystem@myvault
 lukastk/mysystem@convo-review
 lukastk/mysystem@task-assist
+lukastk/mysystem@task-assist-lite
 lukastk/sesh@sesh-cli
 lukastk/sesh@do-tickets
 lukastk/mysrs@mysrs-cards

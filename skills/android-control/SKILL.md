@@ -78,7 +78,7 @@ CDP_PORT=9223 node ~/.agents/skills/android-control/cdp-eval.mjs "({hasMs: typeo
 CDP_PORT=9223 node ~/.agents/skills/android-control/cdp-eval.mjs "(async()=>{ /* any async expr; result is awaited + JSON-returned */ })()"
 ```
 
-`cdp-eval.mjs` (in this skill dir) connects to the page target on `localhost:$CDP_PORT` (default `9222`, so always set `CDP_PORT=9223`) and runs `Runtime.evaluate` with `awaitPromise + returnByValue`. Re-run `adb forward` after a reconnect (the pid/socket change).
+`cdp-eval.mjs` (in this skill dir) connects to the page target on `localhost:$CDP_PORT` (default `9223`) and runs `Runtime.evaluate` with `awaitPromise + returnByValue`. Re-run `adb forward` after a reconnect (the pid/socket change).
 
 Note: the `adb forward` must be re-established after every reconnect, and the pid changes if Obsidian is force-stopped/relaunched — re-probe the socket each time.
 

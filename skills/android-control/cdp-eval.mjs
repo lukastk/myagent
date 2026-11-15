@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Eval JS in the Obsidian Android WebView over CDP (via `adb forward tcp:9222`).
+// Eval JS in the Obsidian Android WebView over CDP (via `adb forward tcp:9223`).
+// Never use local port 9222: it belongs to the interactive Brave / playwright-main.
 // Usage: node cdp-eval.mjs '<js expression>'   (reads from argv or stdin)
 // Returns the JSON-serialized result of the (awaited) expression.
 
-const PORT = process.env.CDP_PORT || '9222';
+const PORT = process.env.CDP_PORT || '9223';
 
 async function pageWsUrl() {
   const res = await fetch(`http://localhost:${PORT}/json`);

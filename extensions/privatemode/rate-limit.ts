@@ -13,6 +13,8 @@ import { dirname, join } from "node:path";
 export const RATE_LIMIT_WINDOW_MS = 60_000;
 export const RATE_LIMIT_CACHED_TOKEN_BUDGET = 450_000;
 export const RATE_LIMIT_HARD_CACHED_TOKEN_LIMIT = 500_000;
+export const RATE_LIMIT_UNCACHED_TOKEN_BUDGET = 180_000;
+export const RATE_LIMIT_HARD_UNCACHED_TOKEN_LIMIT = 200_000;
 export const RATE_LIMIT_REQUEST_BUDGET = 35;
 const RATE_LIMIT_EXPIRY_BUFFER_MS = 250;
 const RATE_LIMIT_IMAGE_TOKEN_ESTIMATE = 8_192;
@@ -28,6 +30,12 @@ const RATE_LIMIT_LOCK_PATH = `${RATE_LIMIT_STATE_PATH}.lock`;
 export interface RateLimitReservation {
   at: number;
   tokens: number;
+  /** Prompt tokens that could not use the provider prompt cache. */
+  uncachedTokens?: number;
+}
+
+export interface RateLimitReservationOptions {
+  uncached?: boolean;
 }
 
 interface RateLimitState {
@@ -38,12 +46,14 @@ interface RateLimitState {
 export interface RateLimitPlan {
   retained: RateLimitReservation[];
   usedTokens: number;
+  usedUncachedTokens: number;
   requestCount: number;
   waitMs: number;
 }
 
 export interface RateLimitSnapshot {
   usedTokens: number;
+  usedUncachedTokens: number;
   requestCount: number;
   nextResetMs: number;
 }
@@ -105,7 +115,8 @@ export function estimatePrivateModePromptTokens(payload: unknown): number {
 export function planPrivateModeRateLimit(
   reservations: readonly RateLimitReservation[],
   requestTokens: number,
-  now: number
+  now: number,
+  options: RateLimitReservationOptions = {}
 ): RateLimitPlan {
   if (!Number.isFinite(requestTokens) || requestTokens <= 0) {
     throw new Error(`PrivateMode token estimate must be positive, got ${requestTokens}`);
@@ -117,6 +128,13 @@ export function planPrivateModeRateLimit(
         "cached-token-per-minute limit. Compact or split the work before retrying."
     );
   }
+  if (options.uncached && requestTokens > RATE_LIMIT_HARD_UNCACHED_TOKEN_LIMIT) {
+    throw new Error(
+      `PrivateMode uncached request is estimated at ${requestTokens.toLocaleString()} prompt tokens, ` +
+        `above the provider's ${RATE_LIMIT_HARD_UNCACHED_TOKEN_LIMIT.toLocaleString()} ` +
+        "prompt-token-per-minute limit. Split the request before retrying."
+    );
+  }
 
   const retained = reservations
     .filter(
@@ -124,35 +142,54 @@ export function planPrivateModeRateLimit(
         Number.isFinite(entry.at) &&
         Number.isFinite(entry.tokens) &&
         entry.tokens > 0 &&
+        (entry.uncachedTokens === undefined ||
+          (Number.isFinite(entry.uncachedTokens) && entry.uncachedTokens >= 0)) &&
         now - entry.at < RATE_LIMIT_WINDOW_MS
     )
     .sort((a, b) => a.at - b.at);
-  let usedTokens = retained.reduce((sum, entry) => sum + entry.tokens, 0);
+  const retainedUsedTokens = retained.reduce((sum, entry) => sum + entry.tokens, 0);
+  const retainedUsedUncachedTokens = retained.reduce(
+    (sum, entry) => sum + (entry.uncachedTokens ?? 0),
+    0
+  );
+  let usedTokens = retainedUsedTokens;
+  let usedUncachedTokens = retainedUsedUncachedTokens;
   let requestCount = retained.length;
-  // A single request between our 450k safety budget and the provider's 500k
-  // hard limit may run only in an otherwise empty window.
+  const requestUncachedTokens = options.uncached ? requestTokens : 0;
+  // A single request between a safety budget and the corresponding provider hard
+  // limit may run only in an otherwise empty window.
   const effectiveTokenBudget = Math.max(
     RATE_LIMIT_CACHED_TOKEN_BUDGET,
     requestTokens
   );
-
-  if (
+  const effectiveUncachedTokenBudget = Math.max(
+    RATE_LIMIT_UNCACHED_TOKEN_BUDGET,
+    requestUncachedTokens
+  );
+  const fits = () =>
     usedTokens + requestTokens <= effectiveTokenBudget &&
-    requestCount + 1 <= RATE_LIMIT_REQUEST_BUDGET
-  ) {
-    return { retained, usedTokens, requestCount, waitMs: 0 };
+    usedUncachedTokens + requestUncachedTokens <= effectiveUncachedTokenBudget &&
+    requestCount + 1 <= RATE_LIMIT_REQUEST_BUDGET;
+
+  if (fits()) {
+    return {
+      retained,
+      usedTokens,
+      usedUncachedTokens,
+      requestCount,
+      waitMs: 0,
+    };
   }
 
   for (const entry of retained) {
     usedTokens -= entry.tokens;
+    usedUncachedTokens -= entry.uncachedTokens ?? 0;
     requestCount -= 1;
-    if (
-      usedTokens + requestTokens <= effectiveTokenBudget &&
-      requestCount + 1 <= RATE_LIMIT_REQUEST_BUDGET
-    ) {
+    if (fits()) {
       return {
         retained,
-        usedTokens: retained.reduce((sum, item) => sum + item.tokens, 0),
+        usedTokens: retainedUsedTokens,
+        usedUncachedTokens: retainedUsedUncachedTokens,
         requestCount: retained.length,
         waitMs: Math.max(
           1,
@@ -183,7 +220,10 @@ function validateRateLimitState(value: unknown): RateLimitState {
       typeof entry !== "object" ||
       !Number.isFinite((entry as RateLimitReservation).at) ||
       !Number.isFinite((entry as RateLimitReservation).tokens) ||
-      (entry as RateLimitReservation).tokens <= 0
+      (entry as RateLimitReservation).tokens <= 0 ||
+      ((entry as RateLimitReservation).uncachedTokens !== undefined &&
+        (!Number.isFinite((entry as RateLimitReservation).uncachedTokens) ||
+          (entry as RateLimitReservation).uncachedTokens! < 0))
     ) {
       throw new Error("PrivateMode rate-limit state contains an invalid reservation");
     }
@@ -258,24 +298,41 @@ async function withRateLimitLock<T>(
 export async function reservePrivateModeCapacity(
   requestTokens: number,
   signal: AbortSignal | undefined,
-  onWait: (waitMs: number) => void
-): Promise<{ waitedMs: number; usedTokens: number; requestCount: number }> {
+  onWait: (waitMs: number) => void,
+  options: RateLimitReservationOptions = {}
+): Promise<{
+  waitedMs: number;
+  usedTokens: number;
+  usedUncachedTokens: number;
+  requestCount: number;
+}> {
   const waitStartedAt = Date.now();
   let announced = false;
   for (;;) {
     const decision = await withRateLimitLock(async () => {
       const now = Date.now();
       const state = await readRateLimitState();
-      const plan = planPrivateModeRateLimit(state.reservations, requestTokens, now);
+      const plan = planPrivateModeRateLimit(
+        state.reservations,
+        requestTokens,
+        now,
+        options
+      );
       if (plan.waitMs > 0) return plan;
-      const reservations = [
-        ...plan.retained,
-        { at: now, tokens: requestTokens },
-      ];
+      const reservation: RateLimitReservation = {
+        at: now,
+        tokens: requestTokens,
+        ...(options.uncached ? { uncachedTokens: requestTokens } : {}),
+      };
+      const reservations = [...plan.retained, reservation];
       await writeRateLimitState({ version: 1, reservations });
       return {
         ...plan,
         usedTokens: reservations.reduce((sum, entry) => sum + entry.tokens, 0),
+        usedUncachedTokens: reservations.reduce(
+          (sum, entry) => sum + (entry.uncachedTokens ?? 0),
+          0
+        ),
         requestCount: reservations.length,
       };
     }, signal);
@@ -284,6 +341,7 @@ export async function reservePrivateModeCapacity(
       return {
         waitedMs: Date.now() - waitStartedAt,
         usedTokens: decision.usedTokens,
+        usedUncachedTokens: decision.usedUncachedTokens,
         requestCount: decision.requestCount,
       };
     }
@@ -306,12 +364,17 @@ export function isPrivateModeRateLimitError(errorMessage: string | undefined): b
 
 export async function activatePrivateModeCooldown(signal?: AbortSignal): Promise<void> {
   await withRateLimitLock(async () => {
-    // One full-budget reservation makes following requests wait for a clean
-    // minute without extending the pause because of earlier local estimates.
+    // Full-budget reservations make following requests wait for a clean minute
+    // without extending the pause because of earlier local estimates. Pause both
+    // provider prompt-token buckets because the upstream 429 may name either one.
     await writeRateLimitState({
       version: 1,
       reservations: [
-        { at: Date.now(), tokens: RATE_LIMIT_CACHED_TOKEN_BUDGET },
+        {
+          at: Date.now(),
+          tokens: RATE_LIMIT_CACHED_TOKEN_BUDGET,
+          uncachedTokens: RATE_LIMIT_UNCACHED_TOKEN_BUDGET,
+        },
       ],
     });
   }, signal);
@@ -326,6 +389,10 @@ export async function rateLimitSnapshot(
     .sort((a, b) => a.at - b.at);
   return {
     usedTokens: retained.reduce((sum, entry) => sum + entry.tokens, 0),
+    usedUncachedTokens: retained.reduce(
+      (sum, entry) => sum + (entry.uncachedTokens ?? 0),
+      0
+    ),
     requestCount: retained.length,
     nextResetMs: retained.length
       ? Math.max(0, retained[0].at + RATE_LIMIT_WINDOW_MS - now)

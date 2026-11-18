@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   RATE_LIMIT_CACHED_TOKEN_BUDGET,
   RATE_LIMIT_HARD_CACHED_TOKEN_LIMIT,
+  RATE_LIMIT_HARD_UNCACHED_TOKEN_LIMIT,
+  RATE_LIMIT_UNCACHED_TOKEN_BUDGET,
   RATE_LIMIT_WINDOW_MS,
   estimatePrivateModePromptTokens,
   isPrivateModeRateLimitError,
@@ -64,6 +66,34 @@ test("rate limiter rejects a single request above the provider hard limit", () =
     () =>
       planPrivateModeRateLimit([], RATE_LIMIT_HARD_CACHED_TOKEN_LIMIT + 1, Date.now()),
     /Compact or split the work/
+  );
+});
+
+test("uncached summary requests use the separate prompt-token budget", () => {
+  const now = 3_000_000;
+  const requestTokens = 100_000;
+  const plan = planPrivateModeRateLimit(
+    [{ at: now - 10_000, tokens: requestTokens, uncachedTokens: requestTokens }],
+    requestTokens,
+    now,
+    { uncached: true }
+  );
+  assert.ok(requestTokens < RATE_LIMIT_UNCACHED_TOKEN_BUDGET);
+  assert.ok(2 * requestTokens > RATE_LIMIT_UNCACHED_TOKEN_BUDGET);
+  assert.equal(plan.waitMs, 50_250);
+  assert.equal(plan.usedUncachedTokens, requestTokens);
+});
+
+test("uncached summary requests reject a single payload above 200k", () => {
+  assert.throws(
+    () =>
+      planPrivateModeRateLimit(
+        [],
+        RATE_LIMIT_HARD_UNCACHED_TOKEN_LIMIT + 1,
+        Date.now(),
+        { uncached: true }
+      ),
+    /prompt-token-per-minute limit/
   );
 });
 

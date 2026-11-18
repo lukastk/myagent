@@ -42,11 +42,16 @@
  *
  * Shared local rate limiting: every Pi/mypi process on the machine reserves an
  * estimated prompt-token budget in one cache file before sending a chat request.
- * A sliding-window queue waits cancellably below PrivateMode's cached-prompt limit
- * instead of letting several large contexts trigger futile 2/4/8-second retries.
- * An unexpected upstream 429 installs a full-window cooldown before Pi's automatic
- * retry. Only timestamps and token estimates are stored; prompt and response content
- * is never written. The limiter is machine-local, so simultaneous traffic from another
+ * The sliding-window queue tracks PrivateMode's 500k cached and 200k uncached
+ * prompt-token buckets separately, with safety headroom, and waits cancellably
+ * instead of letting several large contexts trigger futile provider retries.
+ * PrivateMode compaction uses the same coordinator and progressively summarizes
+ * chronological chunks capped at 150k estimated uncached prompt tokens; each
+ * generated checkpoint feeds the next request, and Pi stores the final result through
+ * its normal compaction lifecycle. An unexpected upstream 429 installs a full-window
+ * cooldown before one compaction retry (ordinary turns use Pi's automatic retry).
+ * Only timestamps and token estimates are stored; prompt and response content is
+ * never written. The limiter is machine-local, so simultaneous traffic from another
  * machine can still cause the first upstream attempt to be rate-limited.
  *
  * Non-fatal load: if local setup fails (no podman, proxy cannot start, missing
@@ -59,12 +64,22 @@
  * `/privatemode restart`    — restart the current proxy container
  * `/privatemode update`     — install the pinned proxy image and reload Pi
  */
+import { randomUUID } from "node:crypto";
+
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import {
+  PRIVATE_MODE_COMPACTION_MAX_OUTPUT_TOKENS,
+  PRIVATE_MODE_COMPACTION_PROMPT_TARGET,
+  PRIVATE_MODE_SUMMARIZATION_SYSTEM_PROMPT,
+  buildPrivateModeCompaction,
+  shouldUsePrivateModeCompaction,
+} from "./compaction.ts";
 import {
   RATE_LIMIT_CACHED_TOKEN_BUDGET,
   RATE_LIMIT_REQUEST_BUDGET,
   RATE_LIMIT_STATE_PATH,
+  RATE_LIMIT_UNCACHED_TOKEN_BUDGET,
   activatePrivateModeCooldown,
   estimatePrivateModePromptTokens,
   isPrivateModeRateLimitError,
@@ -592,6 +607,142 @@ export default async function (pi: ExtensionAPI) {
       },
     });
 
+    pi.on("session_before_compact", async (event, ctx) => {
+      if (!shouldUsePrivateModeCompaction(ctx.model?.provider)) return;
+      const model = ctx.model;
+      if (!model) {
+        const message = "PrivateMode compaction could not resolve the active model.";
+        if (ctx.hasUI) ctx.ui.notify(message, "error");
+        else console.error(`[privatemode] ${message}`);
+        return { cancel: true };
+      }
+
+      const announceWait = (
+        estimatedTokens: number,
+        waitMs: number,
+        requestNumber: number
+      ) => {
+        const seconds = Math.max(1, Math.ceil(waitMs / 1000));
+        const message =
+          `PrivateMode compaction request ${requestNumber}: waiting about ${seconds}s ` +
+          `for uncached-token capacity (${estimatedTokens.toLocaleString()} estimated tokens).`;
+        if (ctx.hasUI) ctx.ui.notify(message, "info");
+        else console.warn(`[privatemode] ${message}`);
+      };
+
+      try {
+        if (ctx.hasUI) {
+          ctx.ui.notify(
+            `PrivateMode compaction: keeping each summary request below ` +
+              `${PRIVATE_MODE_COMPACTION_PROMPT_TARGET.toLocaleString()} estimated prompt tokens.`,
+            "info"
+          );
+        }
+        return await buildPrivateModeCompaction(event, {
+          onRequest: (requestNumber, estimatedTokens) => {
+            console.warn(
+              `[privatemode] compaction request ${requestNumber}: ` +
+                `${estimatedTokens.toLocaleString()} estimated uncached prompt tokens`
+            );
+          },
+          complete: async (prompt, _estimatedPromptTokens, requestNumber, signal) => {
+            for (let attempt = 1; attempt <= 2; attempt += 1) {
+              const response = await ctx.modelRegistry.complete(
+                model,
+                {
+                  messages: [
+                    {
+                      role: "system",
+                      content: PRIVATE_MODE_SUMMARIZATION_SYSTEM_PROMPT,
+                      timestamp: Date.now(),
+                    },
+                    {
+                      role: "user",
+                      content: [{ type: "text", text: prompt }],
+                      timestamp: Date.now(),
+                    },
+                  ],
+                },
+                {
+                  maxTokens: PRIVATE_MODE_COMPACTION_MAX_OUTPUT_TOKENS,
+                  maxRetries: 0,
+                  signal,
+                  cacheRetention: "none",
+                  sessionId: randomUUID(),
+                  onPayload: async (payload) => {
+                    const estimatedTokens = estimatePrivateModePromptTokens(payload);
+                    await reservePrivateModeCapacity(
+                      estimatedTokens,
+                      signal,
+                      (waitMs) => announceWait(estimatedTokens, waitMs, requestNumber),
+                      { uncached: true }
+                    );
+                    return payload;
+                  },
+                }
+              );
+
+              if (response.stopReason === "aborted" || signal.aborted) {
+                const error = new Error("PrivateMode compaction cancelled");
+                error.name = "AbortError";
+                throw error;
+              }
+              if (
+                response.stopReason === "error" &&
+                isPrivateModeRateLimitError(response.errorMessage)
+              ) {
+                await activatePrivateModeCooldown(signal);
+                const message =
+                  `PrivateMode compaction request ${requestNumber} reached the upstream rate limit; ` +
+                  (attempt < 2
+                    ? "waiting for a clean window before one retry."
+                    : "the retry also failed.");
+                if (ctx.hasUI) ctx.ui.notify(message, "warning");
+                else console.warn(`[privatemode] ${message}`);
+                if (attempt < 2) continue;
+              }
+              if (response.stopReason === "error") {
+                throw new Error(
+                  `PrivateMode compaction request ${requestNumber} failed: ` +
+                    (response.errorMessage || "unknown provider error")
+                );
+              }
+              if (response.stopReason === "length") {
+                throw new Error(
+                  `PrivateMode compaction request ${requestNumber} hit the output-token cap; ` +
+                    "the partial summary was not saved"
+                );
+              }
+              if (response.content.some((block) => block.type === "toolCall")) {
+                throw new Error(
+                  `PrivateMode compaction request ${requestNumber} attempted to call a tool`
+                );
+              }
+              const text = response.content
+                .filter(
+                  (block): block is { type: "text"; text: string } => block.type === "text"
+                )
+                .map((block) => block.text)
+                .join("\n");
+              return { text, usage: response.usage };
+            }
+            throw new Error(`PrivateMode compaction request ${requestNumber} exhausted retries`);
+          },
+        });
+      } catch (error) {
+        const aborted = event.signal.aborted ||
+          (error instanceof Error && error.name === "AbortError");
+        const message = aborted
+          ? "PrivateMode compaction cancelled."
+          : `PrivateMode compaction failed: ${error instanceof Error ? error.message : String(error)}`;
+        if (ctx.hasUI) ctx.ui.notify(message, aborted ? "info" : "error");
+        else console.error(`[privatemode] ${message}`);
+        // Never fall through to Pi's one-shot compaction for PrivateMode: the
+        // original payload may be above the provider's uncached-token hard limit.
+        return { cancel: true };
+      }
+    });
+
     pi.on("before_provider_request", async (event, ctx) => {
       if (ctx.model?.provider !== "privatemode") return;
       const estimatedTokens = estimatePrivateModePromptTokens(event.payload);
@@ -781,6 +932,7 @@ export default async function (pi: ExtensionAPI) {
       try {
         const limiter = await rateLimitSnapshot();
         line += `\nlocal limiter: ${limiter.usedTokens.toLocaleString()}/${RATE_LIMIT_CACHED_TOKEN_BUDGET.toLocaleString()} estimated cached tokens`;
+        line += `, ${limiter.usedUncachedTokens.toLocaleString()}/${RATE_LIMIT_UNCACHED_TOKEN_BUDGET.toLocaleString()} estimated uncached tokens`;
         line += `, ${limiter.requestCount}/${RATE_LIMIT_REQUEST_BUDGET} requests in 60s`;
         if (limiter.nextResetMs > 0) {
           line += `; next release in ${Math.ceil(limiter.nextResetMs / 1000)}s`;

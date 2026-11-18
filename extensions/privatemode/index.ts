@@ -17,19 +17,24 @@
  * local servers (e.g. an mlx_lm.server bound to :8080) — we never assume 8080
  * on the host. The base URL is built from the discovered port each session.
  *
- * Keyless proxy: started WITHOUT `--apiKey`, so the proxy forwards the client's
- * Authorization header to Privatemode. pi holds $PRIVATEMODE_API_KEY and
- * authenticates per request — the key never lives in podman args, and key
- * rotation needs no proxy restart.
+ * Keyless proxy: v1.64.0 is started WITHOUT `--api-key`, so the proxy forwards
+ * the client's Authorization header to Privatemode. pi holds
+ * $PRIVATEMODE_API_KEY and authenticates per request — the key never lives in
+ * podman args, and key rotation needs no proxy restart. The image is pinned by
+ * digest because upstream has announced a future release that will require an
+ * attestation key at proxy startup; do not advance the pin past v1.64.0 without
+ * first adopting a mounted secret plus `--api-key-fallback=never`.
  *
  * Cross-session reuse: every pi session looks up the existing
  * `privatemode-proxy` container, reads its published port via `podman port`,
  * and reuses it. Only the first session creates the container. The container
  * runs with `--restart unless-stopped`, so it survives pi crashes and (on
  * Linux) reboots; stop it deliberately with `podman stop privatemode-proxy`.
+ * Existing containers are never pulled or replaced during startup. Use the
+ * explicit `/privatemode update` command to upgrade an old proxy safely.
  *
  * Non-blocking startup: extension loading performs local podman/container setup
- * only. It registers a small known-good model seed immediately and uses Pi's
+ * only. It registers a small current model seed immediately and uses Pi's
  * `refreshModels` lifecycle for remote `/v1/models` discovery. Pi calls that
  * lifecycle cache-only during startup, so an expired key or unavailable remote
  * service cannot hold every Pi launch for the proxy's retry window. Opening the
@@ -40,14 +45,18 @@
  * warns loudly (console + an interactive `session_start` notification) and
  * registers nothing, so pi continues with its other providers.
  *
- * `/privatemode`            — show proxy + model status (or why it's unavailable)
+ * `/privatemode`            — show proxy, image, and model status
  * `/privatemode logs`       — tail proxy container logs
- * `/privatemode restart`    — restart the proxy container and re-healthcheck
+ * `/privatemode restart`    — restart the current proxy container
+ * `/privatemode update`     — install the pinned proxy image and reload Pi
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const CONTAINER_NAME = "privatemode-proxy";
-const IMAGE = "ghcr.io/edgelesssys/privatemode/privatemode-proxy:latest";
+const UPDATE_BACKUP_CONTAINER_NAME = `${CONTAINER_NAME}-update-backup`;
+const IMAGE_VERSION = "v1.64.0";
+const IMAGE_DIGEST = "sha256:cf046abd3f6cbccccc69cc742533607235b756cb497f8d23d4b02f42fc223334";
+const IMAGE = `ghcr.io/edgelesssys/privatemode/privatemode-proxy@${IMAGE_DIGEST}`;
 const CONTAINER_PORT = "8080"; // port inside the container (proxy default)
 const WORKSPACE_VOLUME = "privatemode-proxy-workspace";
 const WORKSPACE_DIR = "/app/privatemode-proxy";
@@ -55,10 +64,21 @@ const WORKSPACE_DIR = "/app/privatemode-proxy";
 const REFRESH_TIMEOUT_MS = 90_000;
 const REFRESH_POLL_MS = 1_000;
 const PROBE_TIMEOUT_MS = 5_000;
-const FALLBACK_MODEL_IDS = ["gpt-oss-120b", "kimi-k2.6"] as const;
+export const FALLBACK_MODEL_IDS = [
+  "glm-5.3",
+  "glm-5.3-flash",
+  "gpt-oss-120b",
+] as const;
+const REMOVED_MODEL_IDS = new Set(["kimi-k2.6", "kimi-latest"]);
+
+export interface PrivateModeModelEntry {
+  id: string;
+  object?: string;
+  tasks?: string[];
+}
 
 interface ModelsResponse {
-  data: Array<{ id: string }>;
+  data: PrivateModeModelEntry[];
 }
 
 function sleep(ms: number): Promise<void> {
@@ -114,12 +134,12 @@ function baseUrlFor(hostPort: string): string {
 }
 
 class ProxyHttpError extends Error {
-  constructor(
-    readonly status: number,
-    statusText: string
-  ) {
+  readonly status: number;
+
+  constructor(status: number, statusText: string) {
     super(`proxy /v1/models returned HTTP ${status}${statusText ? ` ${statusText}` : ""}`);
     this.name = "ProxyHttpError";
+    this.status = status;
   }
 }
 
@@ -155,7 +175,34 @@ async function fetchModels(
   }
 }
 
-/** Ensure the named container exists and is running. Creates or starts it. */
+/** Create the named container from the pinned, already-selected image. */
+async function createContainer(pi: ExtensionAPI): Promise<void> {
+  // No --api-key: v1.64.0 forwards the client's Authorization header. The
+  // pinned version supports the future kebab-case flags without yet requiring
+  // an attestation key at startup.
+  const res = await podman(pi, [
+    "run",
+    "-d",
+    "--name",
+    CONTAINER_NAME,
+    "--restart",
+    "unless-stopped",
+    "-p",
+    `127.0.0.1::${CONTAINER_PORT}`,
+    "-v",
+    `${WORKSPACE_VOLUME}:${WORKSPACE_DIR}`,
+    IMAGE,
+    "--disable-prompt-cache=false",
+    "--workspace",
+    WORKSPACE_DIR,
+  ]);
+  if (res.code !== 0) {
+    throw new Error(`privatemode: 'podman run' for the proxy failed: ${res.stderr.trim()}`);
+  }
+}
+
+/** Ensure the named container exists and is running. Existing containers are
+ * deliberately reused without a pull or replacement so startup stays local. */
 async function ensureContainerRunning(pi: ExtensionAPI): Promise<void> {
   const state = await containerState(pi);
   if (state === "running") return;
@@ -170,29 +217,29 @@ async function ensureContainerRunning(pi: ExtensionAPI): Promise<void> {
     return;
   }
 
-  // absent → create + run. No --apiKey: the proxy forwards the client's
-  // Authorization header to Privatemode, so pi authenticates per request.
-  // -p 127.0.0.1::8080 → publish container's 8080 on an auto-assigned
-  // loopback host port (avoids colliding with anything on a fixed port).
+  await createContainer(pi);
+}
+
+async function containerProxyVersion(pi: ExtensionAPI): Promise<string | null> {
+  if ((await containerState(pi)) !== "running") return null;
   const res = await podman(pi, [
-    "run",
-    "-d",
-    "--name",
+    "exec",
     CONTAINER_NAME,
-    "--restart",
-    "unless-stopped",
-    "-p",
-    `127.0.0.1::${CONTAINER_PORT}`,
-    "-v",
-    `${WORKSPACE_VOLUME}:${WORKSPACE_DIR}`,
-    IMAGE,
-    "--sharedPromptCache",
-    "--workspace",
-    WORKSPACE_DIR,
+    "/bin/privatemode-proxy",
+    "--version",
   ]);
-  if (res.code !== 0) {
-    throw new Error(`privatemode: 'podman run' for the proxy failed: ${res.stderr.trim()}`);
-  }
+  if (res.code !== 0) return null;
+  return res.stdout.match(/v\d+\.\d+\.\d+/)?.[0] ?? null;
+}
+
+async function containerImageRef(pi: ExtensionAPI): Promise<string | null> {
+  const res = await podman(pi, [
+    "inspect",
+    "-f",
+    "{{.ImageName}}",
+    CONTAINER_NAME,
+  ]);
+  return res.code === 0 ? res.stdout.trim() || null : null;
 }
 
 async function waitForProxy(
@@ -235,6 +282,114 @@ async function waitForProxy(
   );
 }
 
+/** Pull and atomically replace the proxy container, rolling back the old
+ * container if creation, attestation, catalog discovery, or version validation
+ * fails. The workspace remains in its named volume across either path. */
+async function updateContainer(
+  pi: ExtensionAPI,
+  apiKey: string
+): Promise<{ baseUrl: string; version: string }> {
+  const pull = await podman(pi, ["pull", IMAGE]);
+  if (pull.code !== 0) {
+    throw new Error(`privatemode: failed to pull ${IMAGE}: ${pull.stderr.trim()}`);
+  }
+
+  const oldState = await containerState(pi);
+  const backupState = await (async () => {
+    const res = await podman(pi, [
+      "inspect",
+      "-f",
+      "{{.State.Running}}",
+      UPDATE_BACKUP_CONTAINER_NAME,
+    ]);
+    return res.code === 0 ? "present" : "absent";
+  })();
+  if (backupState === "present") {
+    throw new Error(
+      `privatemode: update backup container ${UPDATE_BACKUP_CONTAINER_NAME} already exists; ` +
+        "inspect or remove it before retrying"
+    );
+  }
+
+  let backedUp = false;
+  try {
+    if (oldState !== "absent") {
+      if (oldState === "running") {
+        const stop = await podman(pi, ["stop", CONTAINER_NAME]);
+        if (stop.code !== 0) {
+          throw new Error(`failed to stop old proxy: ${stop.stderr.trim()}`);
+        }
+      }
+      const rename = await podman(pi, [
+        "rename",
+        CONTAINER_NAME,
+        UPDATE_BACKUP_CONTAINER_NAME,
+      ]);
+      if (rename.code !== 0) {
+        throw new Error(`failed to back up old proxy container: ${rename.stderr.trim()}`);
+      }
+      backedUp = true;
+    }
+
+    await createContainer(pi);
+    const hostPort = await containerHostPort(pi);
+    if (!hostPort) {
+      throw new Error("updated proxy has no published host port");
+    }
+    const baseUrl = baseUrlFor(hostPort);
+    await waitForProxy(pi, apiKey, baseUrl);
+
+    const version = await containerProxyVersion(pi);
+    if (version !== IMAGE_VERSION) {
+      throw new Error(
+        `updated proxy reported ${version ?? "no version"}; expected ${IMAGE_VERSION}`
+      );
+    }
+
+    if (backedUp) {
+      const removeBackup = await podman(pi, ["rm", "-f", UPDATE_BACKUP_CONTAINER_NAME]);
+      if (removeBackup.code !== 0) {
+        throw new Error(
+          `updated proxy is healthy, but removing backup container failed: ` +
+            removeBackup.stderr.trim()
+        );
+      }
+    }
+    return { baseUrl, version };
+  } catch (error) {
+    const rollbackErrors: string[] = [];
+    const removeNew = await podman(pi, ["rm", "-f", CONTAINER_NAME]);
+    if (removeNew.code !== 0 && !/no such container/i.test(removeNew.stderr)) {
+      rollbackErrors.push(`remove failed update: ${removeNew.stderr.trim()}`);
+    }
+
+    if (backedUp) {
+      const renameBack = await podman(pi, [
+        "rename",
+        UPDATE_BACKUP_CONTAINER_NAME,
+        CONTAINER_NAME,
+      ]);
+      if (renameBack.code !== 0) {
+        rollbackErrors.push(`restore old container name: ${renameBack.stderr.trim()}`);
+      } else if (oldState === "running") {
+        const restartOld = await podman(pi, ["start", CONTAINER_NAME]);
+        if (restartOld.code !== 0) {
+          rollbackErrors.push(`restart old container: ${restartOld.stderr.trim()}`);
+        }
+      }
+    }
+
+    const cause = error instanceof Error ? error.message : String(error);
+    const rollback =
+      rollbackErrors.length > 0
+        ? `; rollback also failed: ${rollbackErrors.join("; ")}`
+        : backedUp
+          ? "; previous proxy restored"
+          : "";
+    throw new Error(`privatemode: proxy update failed: ${cause}${rollback}`);
+  }
+}
+
 /** Ensure the local proxy exists and return its dynamically published URL.
  * Remote health/model discovery is deliberately deferred to refreshModels. */
 async function resolveProxyLocation(pi: ExtensionAPI): Promise<string> {
@@ -250,36 +405,84 @@ async function resolveProxyLocation(pi: ExtensionAPI): Promise<string> {
   return baseUrlFor(hostPort);
 }
 
-// Models surfaced by /v1/models that aren't chat-completion models.
-const NON_CHAT = /whisper|voxtral|embedding|tts|speech/i;
-const isChatModel = (id: string): boolean => !NON_CHAT.test(id);
+const NON_CHAT = /whisper|voxtral|embedding|tts|speech|deepseek-ocr/i;
+const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } as const;
+const GLM_THINKING_LEVELS = {
+  off: "none",
+  minimal: null,
+  low: "low",
+  medium: null,
+  high: "high",
+  xhigh: null,
+  max: "max",
+} as const;
+const GPT_OSS_THINKING_LEVELS = {
+  off: null,
+  minimal: null,
+  low: "low",
+  medium: "medium",
+  high: "high",
+  xhigh: null,
+  max: null,
+} as const;
 
-function modelConfig(id: string) {
-  const reasoning = /kimi|gpt-oss/i.test(id);
-  const isKimi = /kimi/i.test(id);
+function isPiChatModel(model: PrivateModeModelEntry): boolean {
+  if (REMOVED_MODEL_IDS.has(model.id) || NON_CHAT.test(model.id)) return false;
+  if (!model.tasks) return true;
+  return model.tasks.includes("generate") && model.tasks.includes("tool_calling");
+}
+
+function modelConfig(model: PrivateModeModelEntry) {
+  const { id } = model;
+  const isGlm = id.startsWith("glm-");
+  const isGlmFlash = /glm-(?:5\.3-)?flash|glm-flash-latest/.test(id);
+  const isGptOss = /(?:^|\/)gpt-oss-(?:120b|latest)$/.test(id);
+  const hasVision = model.tasks?.includes("vision") ?? isGlmFlash;
+
+  const contextWindow = isGlm ? 1_000_000 : isGptOss ? 131_072 : 128_000;
+  // Privatemode publishes a 128k GLM output cap. gpt-oss has a 128k total
+  // context but no separate published output cap, so use a conservative 32k.
+  const maxTokens = isGlm ? 131_072 : isGptOss ? 32_768 : 16_384;
+
   return {
     type: "chat" as const,
     id,
     name: id,
-    reasoning,
-    input: ["text", "image"] as ("text" | "image")[],
-    // Pricing isn't exposed by /v1/models; left at 0 so cost tracking simply
-    // reports zero rather than inventing numbers. Set real values from the
-    // portal billing page if you want accurate usage cost.
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 262144,
-    maxTokens: isKimi ? 32000 : 8192,
+    reasoning: true,
+    thinkingLevelMap: isGlm
+      ? GLM_THINKING_LEVELS
+      : isGptOss
+        ? GPT_OSS_THINKING_LEVELS
+        : undefined,
+    input: (hasVision ? ["text", "image"] : ["text"]) as ("text" | "image")[],
+    // Published prices are denominated in EUR, while Pi's cost schema requires
+    // USD. Keep accounting at zero rather than silently treating EUR as USD.
+    cost: { ...ZERO_COST },
+    contextWindow,
+    maxTokens,
+    compat: {
+      supportsStore: false,
+      supportsReasoningEffort: true,
+      maxTokensField: "max_tokens" as const,
+      supportsStrictMode: true,
+    },
   };
 }
 
+export function configsFromModelEntries(models: readonly PrivateModeModelEntry[]) {
+  return models.filter(isPiChatModel).map(modelConfig);
+}
+
 function configsFromIds(ids: readonly string[]) {
-  return ids.filter(isChatModel).map(modelConfig);
+  return configsFromModelEntries(ids.map((id) => ({ id })));
 }
 
 export default async function (pi: ExtensionAPI) {
   let loadError: string | null = null;
   let refreshError: string | null = null;
   let activeBaseUrl: string | null = null;
+  let activeProxyVersion: string | null = null;
+  let proxyVersionWarning: string | null = null;
   const apiKey = process.env.PRIVATEMODE_API_KEY;
 
   try {
@@ -302,15 +505,21 @@ export default async function (pi: ExtensionAPI) {
     }
 
     activeBaseUrl = await resolveProxyLocation(pi);
+    activeProxyVersion = await containerProxyVersion(pi);
+    if (activeProxyVersion !== IMAGE_VERSION) {
+      proxyVersionWarning =
+        `PrivateMode proxy is ${activeProxyVersion ?? "an unknown version"}; ` +
+        `${IMAGE_VERSION} is pinned. Run /privatemode update.`;
+      console.warn(`[privatemode] ${proxyVersionWarning}`);
+    }
     const baseUrl = activeBaseUrl;
     pi.registerProvider("privatemode", {
       name: "PrivateMode AI",
       baseUrl,
       apiKey: "$PRIVATEMODE_API_KEY",
       api: "openai-completions",
-      // Seed startup synchronously. A successful refresh persists and restores
-      // the provider's current IDs; these two keep the configured scope stable
-      // before the first successful discovery on a machine.
+      // Seed startup synchronously. Successful discovery persists the current
+      // catalog; the seed contains only canonical, currently supported models.
       models: configsFromIds(FALLBACK_MODEL_IDS),
       refreshModels: async (context) => {
         const storedIds = context.stored?.models.map((model) => model.id) ?? [];
@@ -335,7 +544,7 @@ export default async function (pi: ExtensionAPI) {
             models = await waitForProxy(pi, apiKey, baseUrl, context.signal);
           }
 
-          const discovered = configsFromIds(models.data.map((model) => model.id));
+          const discovered = configsFromModelEntries(models.data);
           if (discovered.length === 0) {
             throw new Error(
               "proxy /v1/models returned no chat models (got: " +
@@ -368,21 +577,65 @@ export default async function (pi: ExtensionAPI) {
     console.warn(`[privatemode] provider unavailable: ${loadError}`);
   }
 
-  // Surface local setup failure interactively too (console.warn covers all
-  // modes, including print/RPC where session_start may not fire). Remote/auth
-  // failures happen only during explicit refresh/status operations.
-  if (loadError) {
+  // Surface local setup failures and stale proxy versions interactively too.
+  // console.warn covers non-UI modes, including print and RPC startup.
+  if (loadError || proxyVersionWarning) {
     pi.on("session_start", (_event, ctx) => {
-      ctx.ui.notify(`PrivateMode AI unavailable: ${loadError}`, "warning");
+      if (loadError) {
+        ctx.ui.notify(`PrivateMode AI unavailable: ${loadError}`, "warning");
+      } else if (proxyVersionWarning) {
+        ctx.ui.notify(proxyVersionWarning, "warning");
+      }
     });
   }
 
   // Always register the command so the user can inspect/troubleshoot — even
   // when the provider couldn't be registered.
   pi.registerCommand("privatemode", {
-    description: "PrivateMode proxy: status | logs | restart",
+    description: "PrivateMode proxy: status | logs | restart | update",
     handler: async (args, ctx) => {
       const sub = (args || "").trim().split(/\s+/)[0] || "status";
+
+      if (sub === "update") {
+        if (!(await podmanReady(pi))) {
+          ctx.ui.notify("podman not available — can't update the PrivateMode proxy.", "error");
+          return;
+        }
+        if (!apiKey) {
+          ctx.ui.notify("PRIVATEMODE_API_KEY not set — can't verify the updated proxy.", "error");
+          return;
+        }
+        const currentVersion = await containerProxyVersion(pi);
+        const currentImage = await containerImageRef(pi);
+        if (currentVersion === IMAGE_VERSION && currentImage === IMAGE) {
+          ctx.ui.notify(`PrivateMode proxy is already pinned at ${IMAGE_VERSION}.`, "info");
+          return;
+        }
+        if (ctx.hasUI) {
+          const confirmed = await ctx.ui.confirm(
+            "Update PrivateMode proxy?",
+            "This briefly stops the shared proxy and may interrupt other Pi sessions."
+          );
+          if (!confirmed) return;
+        }
+        ctx.ui.notify(`Updating PrivateMode proxy to ${IMAGE_VERSION}…`, "info");
+        try {
+          const updated = await updateContainer(pi, apiKey);
+          activeBaseUrl = updated.baseUrl;
+          activeProxyVersion = updated.version;
+          proxyVersionWarning = null;
+          refreshError = null;
+          ctx.ui.notify(
+            `PrivateMode proxy updated to ${updated.version} at ${updated.baseUrl}. Reloading Pi…`,
+            "info"
+          );
+          await ctx.reload();
+          return;
+        } catch (e) {
+          ctx.ui.notify(e instanceof Error ? e.message : String(e), "error");
+          return;
+        }
+      }
 
       if (sub === "restart") {
         if (!(await podmanReady(pi))) {
@@ -439,16 +692,32 @@ export default async function (pi: ExtensionAPI) {
       }
       const state = await containerState(pi);
       const hostPort = await containerHostPort(pi);
+      const imageRef = await containerImageRef(pi);
+      activeProxyVersion = await containerProxyVersion(pi);
       let line = `proxy container: ${state}`;
+      line += `\nproxy version: ${activeProxyVersion ?? "(unknown)"}`;
+      line += `\npinned version: ${IMAGE_VERSION}`;
+      line += `\ncontainer image: ${imageRef ?? "(unknown)"}`;
       line += `\nhost port: ${hostPort ?? "(none)"}`;
       if (activeBaseUrl) line += `\nbase URL: ${activeBaseUrl}`;
+      if (activeProxyVersion !== IMAGE_VERSION) {
+        line += "\nupdate available: run /privatemode update";
+      }
       if (refreshError) line += `\nlast refresh error: ${refreshError}`;
       if (hostPort && apiKey) {
         try {
-          const m = await fetchModels(apiKey, baseUrlFor(hostPort));
-          line += `\nmodels (${m.data.length}): ${m.data
+          const response = await fetchModels(apiKey, baseUrlFor(hostPort));
+          const surfaced = configsFromModelEntries(response.data);
+          const surfacedIds = new Set(surfaced.map((model) => model.id));
+          const excluded = response.data
+            .map((model) => model.id)
+            .filter((id) => !surfacedIds.has(id));
+          line += `\nPi chat models (${surfaced.length}): ${surfaced
             .map((model) => model.id)
             .join(", ")}`;
+          if (excluded.length > 0) {
+            line += `\nexcluded non-chat/specialized models (${excluded.length}): ${excluded.join(", ")}`;
+          }
         } catch (e) {
           line += `\nprobe failed: ${e instanceof Error ? e.message : e}`;
         }

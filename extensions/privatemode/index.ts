@@ -40,6 +40,15 @@
  * service cannot hold every Pi launch for the proxy's retry window. Opening the
  * model picker performs the cancellable network refresh and persists its catalog.
  *
+ * Shared local rate limiting: every Pi/mypi process on the machine reserves an
+ * estimated prompt-token budget in one cache file before sending a chat request.
+ * A sliding-window queue waits cancellably below PrivateMode's cached-prompt limit
+ * instead of letting several large contexts trigger futile 2/4/8-second retries.
+ * An unexpected upstream 429 installs a full-window cooldown before Pi's automatic
+ * retry. Only timestamps and token estimates are stored; prompt and response content
+ * is never written. The limiter is machine-local, so simultaneous traffic from another
+ * machine can still cause the first upstream attempt to be rate-limited.
+ *
  * Non-fatal load: if local setup fails (no podman, proxy cannot start, missing
  * key) this extension NEVER throws — throwing aborts pi startup entirely. It
  * warns loudly (console + an interactive `session_start` notification) and
@@ -51,6 +60,17 @@
  * `/privatemode update`     — install the pinned proxy image and reload Pi
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+import {
+  RATE_LIMIT_CACHED_TOKEN_BUDGET,
+  RATE_LIMIT_REQUEST_BUDGET,
+  RATE_LIMIT_STATE_PATH,
+  activatePrivateModeCooldown,
+  estimatePrivateModePromptTokens,
+  isPrivateModeRateLimitError,
+  rateLimitSnapshot,
+  reservePrivateModeCapacity,
+} from "./rate-limit.ts";
 
 const CONTAINER_NAME = "privatemode-proxy";
 const UPDATE_BACKUP_CONTAINER_NAME = `${CONTAINER_NAME}-update-backup`;
@@ -64,6 +84,7 @@ const WORKSPACE_DIR = "/app/privatemode-proxy";
 const REFRESH_TIMEOUT_MS = 90_000;
 const REFRESH_POLL_MS = 1_000;
 const PROBE_TIMEOUT_MS = 5_000;
+
 export const FALLBACK_MODEL_IDS = [
   "glm-5.3",
   "glm-5.3-flash",
@@ -570,6 +591,59 @@ export default async function (pi: ExtensionAPI) {
         }
       },
     });
+
+    pi.on("before_provider_request", async (event, ctx) => {
+      if (ctx.model?.provider !== "privatemode") return;
+      const estimatedTokens = estimatePrivateModePromptTokens(event.payload);
+      try {
+        const result = await reservePrivateModeCapacity(
+          estimatedTokens,
+          ctx.signal,
+          (waitMs) => {
+            const seconds = Math.max(1, Math.ceil(waitMs / 1000));
+            const message =
+              `PrivateMode local rate limit: waiting about ${seconds}s before sending ` +
+              `an estimated ${estimatedTokens.toLocaleString()}-token request.`;
+            if (ctx.hasUI) ctx.ui.notify(message, "info");
+            else console.warn(`[privatemode] ${message}`);
+          }
+        );
+        if (result.waitedMs >= 1_000) {
+          console.warn(
+            `[privatemode] rate-limit wait completed after ${Math.ceil(
+              result.waitedMs / 1000
+            )}s; ${result.usedTokens.toLocaleString()} estimated tokens reserved ` +
+              `across ${result.requestCount} request(s) in the current window`
+          );
+        }
+      } catch (error) {
+        // Pi reports extension-hook exceptions but otherwise continues the provider
+        // request. Abort explicitly so a broken limiter or impossible request fails
+        // closed instead of bypassing the configured local budget.
+        ctx.abort();
+        throw error;
+      }
+    });
+
+    pi.on("message_end", async (event, ctx) => {
+      if (
+        event.message.role !== "assistant" ||
+        event.message.provider !== "privatemode" ||
+        !isPrivateModeRateLimitError(event.message.errorMessage)
+      ) {
+        return;
+      }
+      try {
+        await activatePrivateModeCooldown();
+        const message =
+          "PrivateMode upstream rate limit reached; local requests are paused for about 60s before the automatic retry.";
+        if (ctx.hasUI) ctx.ui.notify(message, "warning");
+        else console.warn(`[privatemode] ${message}`);
+      } catch (error) {
+        ctx.abort();
+        throw error;
+      }
+    });
   } catch (e) {
     loadError = e instanceof Error ? e.message : String(e);
     // Non-fatal: warn loudly but do NOT rethrow — throwing aborts pi startup
@@ -704,6 +778,17 @@ export default async function (pi: ExtensionAPI) {
         line += "\nupdate available: run /privatemode update";
       }
       if (refreshError) line += `\nlast refresh error: ${refreshError}`;
+      try {
+        const limiter = await rateLimitSnapshot();
+        line += `\nlocal limiter: ${limiter.usedTokens.toLocaleString()}/${RATE_LIMIT_CACHED_TOKEN_BUDGET.toLocaleString()} estimated cached tokens`;
+        line += `, ${limiter.requestCount}/${RATE_LIMIT_REQUEST_BUDGET} requests in 60s`;
+        if (limiter.nextResetMs > 0) {
+          line += `; next release in ${Math.ceil(limiter.nextResetMs / 1000)}s`;
+        }
+        line += `\nlimiter state: ${RATE_LIMIT_STATE_PATH}`;
+      } catch (e) {
+        line += `\nlocal limiter error: ${e instanceof Error ? e.message : String(e)}`;
+      }
       if (hostPort && apiKey) {
         try {
           const response = await fetchModels(apiKey, baseUrlFor(hostPort));

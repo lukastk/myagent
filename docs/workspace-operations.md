@@ -32,7 +32,7 @@ not boxyard boxes and had to be moved out and re-imported via `boxyard new --fro
 
 To ssh into one of my machines (or run a command on one), **prefer
 `ssh-target <machine> [args...]`** — the canonical path. It looks the machine up
-in the `MYRIG_MACHINES` zsh array (`macbook`, `macstudio`, `mymain`, `termux`,
+in the `MYRIG_MACHINES` zsh array (`macbook`, `macstudio`, `mymain`, `pixel9`,
 `ideapad`, `pocket4`) and connects with the right user/host/port, plus connection multiplexing, a fast
 `ConnectTimeout`, and `StrictHostKeyChecking=accept-new`. Run `ssh-target` with
 no args to list the machines.

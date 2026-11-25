@@ -20,7 +20,9 @@ All four accounts use the default OAuth client. Tokens are already authorized an
 
 **Authorized services:** all four accounts hold the same 10 user-OAuth services — `gmail`, `calendar`, `drive`, `docs`, `sheets`, `chat`, `contacts`, `tasks`, `people`, `classroom` (check with `gog auth list`).
 
-The CLI also exposes `slides`, `groups`, and `keep`, whose scopes are **not** authorized on any account. `slides create` still works, because gog creates the presentation through the Drive API (verified 2026-10-28); the other `slides` subcommands use the Slides API and fail until you re-auth with a wider `--services` list (see "Re-authenticating"). `groups` (Cloud Identity) and `keep` are Workspace-only — `keep` additionally needs a service account with domain-wide delegation — so they're only viable on `lukas@jackfruiting.com` if set up.
+**Slides works on every account even though `gog auth list` does not show `slides`.** The Slides API accepts the full `drive` scope that every token holds, and the API is enabled in the OAuth client's Cloud project (396244937136; enabled 2026-11-25, verified with `slides info` and `list-slides` on mymain, macbook and macstudio). All `slides` subcommands (`info`, `list-slides`, `new-slide`, `duplicate-slide`, `insert-text`, `replace-text`, `raw`, …) work; do not ask for a re-auth to use them. If a Slides call fails with "Slides API is not enabled for this OAuth project", the fix is enabling `slides.googleapis.com` in that project, not re-authorizing.
+
+The CLI also exposes `groups` and `keep`, whose scopes are **not** authorized on any account. `groups` (Cloud Identity) and `keep` are Workspace-only — `keep` additionally needs a service account with domain-wide delegation — so they're only viable on `lukas@jackfruiting.com` if set up.
 
 ## Common commands
 
@@ -243,7 +245,7 @@ If a `gog` command fails with an authentication error (token expired, missing sc
 gog auth add <email> --services all --force-consent
 ```
 
-Always pass `--services all` (the same default `gog-auth-bootstrap-all` uses) — every account holds the full set, and re-authorizing with a narrower list would cut its token down to just those scopes.
+Always pass `--services all` (the same default `gog-auth-bootstrap-all` uses) — every account holds the full set, and re-authorizing with a narrower list would cut its token down to just those scopes. Note that gog's `all` preset grows with gog releases (v0.48.1 adds slides, forms, meet, appscript, youtube, photos and others to the 10 services the tokens hold today), so a fresh `--services all` consent asks for more scopes than the current tokens have.
 
 | Account | Command |
 |---|---|
